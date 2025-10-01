@@ -7,14 +7,14 @@ const { spawn } = require('child_process'); // 用於執行外部程式
 
 // 2. 初始化 Express 應用
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // 3. 設定中間件 (Middleware)
 app.use(cors());
 app.use(express.json());
 
 // --- 資料庫連線 ---
-const mongoURI = 'mongodb+srv://user:WXXrWGcC9Z0LiYT3@cluster0.t2r6dop.mongodb.net/SCU?retryWrites=true&w=majority';
+const mongoURI = process.env.MONGO_URI;
 
 mongoose.connect(mongoURI)
   .then(() => console.log('成功連接到 MongoDB (SCU 資料庫)'))
