@@ -69,7 +69,7 @@
             chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
             thumb_up: <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 012.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 00.322-1.672V3a.75.75 0 01.75-.75A2.25 2.25 0 0116.5 4.5c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 01-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 00-1.423-.23H5.904M6.633 10.5l-1.992 2.658a.75.75 0 00.42 1.242h2.036M6.633 10.5V3.75" />,
             thumb_down: <path strokeLinecap="round" strokeLinejoin="round" d="M7.867 15.5c-.806 0-1.533.446-2.031 1.08a9.041 9.041 0 01-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.498 4.498 0 00-.322 1.672V21a.75.75 0 01-.75.75A2.25 2.25 0 011.5 19.5c0-1.152.26-2.243.723-3.218.266-.558-.107-1.282-.725-1.282H.626c-1.026 0-1.945-.694-2.054-1.715A12.134 12.134 0 010 12c0-4.634 2.286-8.775 5.904-11.25a.75.75 0 01.927.221l1.992 2.658a.75.75 0 00.42 1.242h2.036M7.867 15.5V20.25" />
-          };
+        };
         const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
         return (
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`${className} transition-transform duration-200 ${rotation}`}>
@@ -727,7 +727,107 @@
         
         return (
           <div className="flex h-full w-full p-4 gap-4 bg-white">
-            {/* ... (左側和中間區塊的 JSX 與之前相同) ... */}
+            <div className="w-1/5 flex flex-col bg-gray-50 rounded-lg p-4 border">
+              <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2"><Icon name="book" className="w-6 h-6 text-blue-600"/>課程列表</h2>
+              <div className="flex-1 overflow-y-auto pr-2">
+                {courses.map(course => (
+                  <div key={course.id} className="mb-3">
+                    <div onClick={() => handleCourseSelect(course)} className={`p-3 rounded-lg cursor-pointer transition-all ${selectedCourse?.id === course.id ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-200'}`}>
+                      <h3 className="font-semibold text-gray-700">{course.title}</h3>
+                    </div>
+                    {selectedCourse?.id === course.id && (
+                      <div className="mt-2 pl-2 space-y-1">
+                        {modules.map(module => module.submodules ? (
+                          <div key={module.id}>
+                            <div onClick={() => toggleModuleExpansion(module.id)} className="flex justify-between items-center p-2 rounded-md cursor-pointer hover:bg-gray-200">
+                                <span className="font-medium text-gray-600">{module.title}</span>
+                                <Icon name="chevron" className="w-5 h-5 text-gray-500" isExpanded={expandedModules[module.id]} />
+                            </div>
+                            {expandedModules[module.id] && (
+                                <div className="pl-4 mt-1 border-l-2 border-blue-300 space-y-1">
+                                    {module.submodules.map(submodule => (
+                                        <div key={submodule.id} onClick={() => handleModuleSelect(submodule)} className={`p-2 rounded-md cursor-pointer text-sm text-gray-600 transition-all ${currentModule?.id === submodule.id ? 'bg-blue-200 font-semibold' : 'hover:bg-blue-100'}`}>
+                                            {submodule.title}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div key={module.id} onClick={() => handleModuleSelect(module)} className={`p-2 rounded-md cursor-pointer text-sm text-gray-600 transition-all ${currentModule?.id === module.id ? 'bg-blue-200 font-semibold' : 'hover:bg-blue-100'}`}>
+                            {module.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="w-1/2 flex flex-col gap-4">
+              <div className="flex-1 flex flex-col bg-gray-50 rounded-lg p-4 border">
+                  <h3 className="text-xl font-bold mb-4 text-gray-800">上次進度 / {currentModule?.title || '第一課'}</h3>
+                  <div className="flex-1 bg-black rounded-lg flex items-center justify-center text-white flex-col overflow-hidden">
+                      {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
+                      {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
+                      {!currentModule && <p>請選擇一個課程</p>}
+                  </div>
+              </div>
+
+              <div className="h-2/5 flex flex-col bg-gray-50 rounded-lg border">
+                  <div className="flex border-b p-2 items-center gap-2">
+                      {tabs.map(tab => (
+                          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`flex items-center py-1 px-2 rounded-md cursor-pointer text-xs ${activeTabId === tab.id ? 'bg-white shadow-sm ring-1 ring-inset ring-gray-200' : 'hover:bg-gray-200'}`}>
+                              <span>{tab.title}</span>
+                              <button onClick={(e) => {e.stopPropagation(); handleRemoveTab(tab.id);}} className="ml-2 text-gray-400 hover:text-red-500">✕</button>
+                          </div>
+                      ))}
+                      <div className="ml-auto flex items-center gap-2">
+                        <button onClick={() => handleAddTab('code')} className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200">+ Code</button>
+                        <button onClick={() => handleAddTab('note')} className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200">+ Note</button>
+                      </div>
+                  </div>
+                  <div className="flex-1 p-2 overflow-y-auto">
+                      {activeTab?.type === 'code' && (
+                          <div className="h-full flex flex-col">
+                              <div className="flex-1 flex flex-col">
+                                  <textarea
+                                      key={activeTab.id}
+                                      value={activeTab.content}
+                                      onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
+                                      className="code-textarea flex-1"
+                                      placeholder="# 在此編寫您的 Python 程式碼..."
+                                  />
+                              </div>
+                              <div className="pt-2 flex items-start gap-2">
+                                <button 
+                                    onClick={() => handleRunCode(activeTab.id)} 
+                                    disabled={!activeTab || activeTab.output === '執行中...'}
+                                    className="bg-green-500 text-white py-1 px-3 rounded hover:bg-green-600 text-sm disabled:bg-gray-400"
+                                >
+                                    {activeTab.output === '執行中...' ? '執行中...' : '執行'}
+                                </button>
+                                <div className="flex-1 text-xs">
+                                  {activeTab.output && activeTab.output !== '執行中...' && <pre className="p-2 bg-gray-100 rounded whitespace-pre-wrap"><strong>輸出:</strong> {activeTab.output}</pre>}
+                                  {activeTab.error && <pre className="p-2 bg-red-100 text-red-700 rounded whitespace-pre-wrap"><strong>錯誤:</strong> {activeTab.error}</pre>}
+                                </div>
+                              </div>
+                          </div>
+                      )}
+                      {activeTab?.type === 'note' && (
+                          <textarea
+                              value={activeTab.content}
+                              onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
+                              className="w-full h-full p-2 border rounded-md resize-none"
+                              placeholder="輸入你的筆記..."
+                          />
+                      )}
+                      {!activeTab && <div className="text-gray-500 p-4">請新增一個分頁開始。</div>}
+                  </div>
+              </div>
+            </div>
+            
             <div className="w-3/10 flex flex-col bg-blue-50 rounded-lg p-4 border shadow-inner">
               <h2 className="text-xl font-bold mb-4 text-blue-800">AI 助教</h2>
               <div className="flex-1 overflow-y-auto bg-white rounded-lg p-3 shadow-sm mb-4">
@@ -811,3 +911,4 @@
 
 </body>
 </html>
+
