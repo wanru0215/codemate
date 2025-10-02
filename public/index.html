@@ -1,1 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeMate 學習平台</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better layout and aesthetics */
+        html, body, #root {
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling on the body */
+        }
+        /* Style for the textarea to mimic a code editor */
+        .code-textarea {
+            background: #f8f9fa;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 14px;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem; /* rounded-md */
+            overflow-y: auto !important;
+            resize: none; /* Disable manual resizing */
+            padding: 10px;
+        }
+        .code-textarea {
+            min-height: 150px;
+            max-height: 300px;
+        }
+        .prose pre {
+            background-color: #f1f3f5;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        .feedback-btn {
+            background-color: #e2e8f0;
+            border-radius: 50%;
+            padding: 0.25rem;
+            transition: background-color 0.2s;
+        }
+        .feedback-btn:hover {
+            background-color: #cbd5e1;
+        }
+        .feedback-btn.selected {
+            background-color: #4299e1;
+            color: white;
+        }
 
+    </style>
+</head>
+<body class="bg-blue-50 font-sans">
+
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const { createRoot } = ReactDOM;
+
+    // A simple SVG Icon component for placeholders
+    const Icon = ({ name, className, isExpanded }) => {
+        const icons = {
+            play: <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />,
+            code: <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />,
+            book: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />,
+            send: <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />,
+            chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
+            thumb_up: <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 012.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 00.322-1.672V3a.75.75 0 01.75-.75A2.25 2.25 0 0116.5 4.5c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 01-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 00-1.423-.23H5.904M6.633 10.5l-1.992 2.658a.75.75 0 00.42 1.242h2.036M6.633 10.5V3.75" />,
+            thumb_down: <path strokeLinecap="round" strokeLinejoin="round" d="M7.867 15.5c-.806 0-1.533.446-2.031 1.08a9.041 9.041 0 01-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.498 4.498 0 00-.322 1.672V21a.75.75 0 01-.75.75A2.25 2.25 0 011.5 19.5c0-1.152.26-2.243.723-3.218.266-.558-.107-1.282-.725-1.282H.626c-1.026 0-1.945-.694-2.054-1.715A12.134 12.134 0 010 12c0-4.634 2.286-8.775 5.904-11.25a.75.75 0 01.927.221l1.992 2.658a.75.75 0 00.42 1.242h2.036M7.867 15.5V20.25" />
+        };
+        const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
+        return (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`${className} transition-transform duration-200 ${rotation}`}>
+                {icons[name] || ''}
+            </svg>
+        );
+    };
+
+    const App = () => {
+      const [isLoginView, setIsLoginView] = useState(true);
+      const [studentId, setStudentId] = useState('');
+      const [studentName, setStudentName] = useState('');
+      const [password, setPassword] = useState('');
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [welcomeMessage, setWelcomeMessage] = useState('');
+      const [message, setMessage] = useState('');
+      const [showMessage, setShowMessage] = useState(false);
+      
+      const messagesEndRef = useRef(null);
+      const [chatMessages, setChatMessages] = useState([
+        { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString(), feedback: null }
+      ]);
+      const [chatInput, setChatInput] = useState('');
+      const [isAiResponding, setIsAiResponding] = useState(false);
+      const [courses, setCourses] = useState([]);
+      const [selectedCourse, setSelectedCourse] = useState(null);
+      const [modules, setModules] = useState([]);
+      const [currentModule, setCurrentModule] = useState(null);
+      const [expandedModules, setExpandedModules] = useState({});
+      
+      const [tabs, setTabs] = useState([]);
+      const [activeTabId, setActiveTabId] = useState(null);
+      const [nextTabId, setNextTabId] = useState(1);
+      
+      const mockCourses = [
+          { id: 1, title: "程式設計(一)" },
+          { id: 2, title: "程式設計(二)" }
+      ];
+      const mockModules = {
+          1: [
+              { 
+                id: 101, 
+                title: "第1章．Python 的基本觀念", 
+                submodules: [
+                    { id: 1011, title: "影片 1-1", type: 'video', content: "ch01-1", videoUrl: "https://drive.google.com/file/d/15qXDhuVvm_VJyJNI0uyySjEucgh-r7HT/preview" },
+                    { id: 1012, title: "影片 1-2", type: 'video', content: "ch01-2", videoUrl: "https://drive.google.com/file/d/1e_es_9B7bCMsf27CnRuclm_RUELwSrS1/preview" },
+                    { id: 1013, title: "Ch1 PPT", type: 'ppt', content: "這是變數與資料型別的簡報。", pptUrl: "https://drive.google.com/file/d/1kuOHyantUs0sBOKw04TUG9pRvwEJq0zx/preview" }
+                    
+                ]
+              },
+              { 
+                id: 102,
+                title: "第2章．變數與數學運算", 
+                submodules: [
+                    { id: 1021, title: "影片 2-1", type: 'video', content: "ch02-1", videoUrl: "https://drive.google.com/file/d/1akrD4qfu1G7LZuwK-9jI-j7B1OZujqZ1/preview" },
+                    { id: 1022, title: "影片 2-2", type: 'video', content: "ch02-2", videoUrl: "https://drive.google.com/file/d/1zstzbCFhBGfFqm2LM93zXpg5YZOQHvpr/preview" },
+                    { id: 1023, title: "影片 2-3", type: 'video', content: "ch02-3", videoUrl: "https://drive.google.com/file/d/1wgqSy52BrBX4xWCraa-msP39MccoK86s/preview" },
+                    { id: 1024, title: "Ch2 PPT", type: 'ppt', content: "變數與數學運算簡報。", pptUrl: "https://drive.google.com/file/d/1i2Xi_BvXIuytfp9IAt8Nt0tjEj0FojFf/preview" }
+                    
+                ]
+              },
+              { 
+                id: 103, 
+                title: "第3章．Python 的基本資料型態", 
+                submodules: [
+                    { id: 1031, title: "影片 3-1", type: 'video', content: "ch03-1", videoUrl: "https://drive.google.com/file/d/1ulfuXfQyLCqQX5u7IGpACFnWpL0GZrVi/preview" },
+                    { id: 1032, title: "影片 3-2", type: 'video', content: "ch03-2", videoUrl: "https://drive.google.com/file/d/1T9msCqrfpk5rRoJzRGKb8WjFu9HC-96y/preview" },
+                    { id: 1033, title: "影片 3-3", type: 'video', content: "ch03-3", videoUrl: "https://drive.google.com/file/d/1P6wqAcHvCacyv0wNBvHBlhXLL4Ok_0zY/preview" },
+                    { id: 1034, title: "影片 3-4", type: 'video', content: "ch03-4", videoUrl: "https://drive.google.com/file/d/12OWHM2vRUKYYOzFSpgvLJSCny8d6IR4Y/preview" },
+                    { id: 1035, title: "Ch3 PPT", type: 'ppt', content: "Python 的基本資料型態簡報。", pptUrl: "https://drive.google.com/file/d/1Onwja2HDKynOkVfxxKz4oIZe-je5NKQK/preview" }
+                    
+                ]
+              },
+              { 
+                id: 104,
+                title: "第4章．基本輸入與輸出", 
+                submodules: [
+                    { id: 1041, title: "影片 4-1", type: 'video', content: "ch04-1", videoUrl: "https://drive.google.com/file/d/1PBWDANb_YfMzYh8ko0F0ZHX_qK8PHeif/preview" },
+                    { id: 1042, title: "影片 4-2", type: 'video', content: "ch04-2", videoUrl: "https://drive.google.com/file/d/1RZ7uZfKSa-Gqun6NGDQMTVWu_8Wlnxo-/preview" },
+                    { id: 1043, title: "影片 4-3", type: 'video', content: "ch04-3", videoUrl: "https://drive.google.com/file/d/1en-PQAQZ5QMaN6-JNTw9UKW-M2dPL1GB/preview" },
+                    { id: 1044, title: "影片 4-4", type: 'video', content: "ch04-4", videoUrl: "https://drive.google.com/file/d/1exViJHcDSWentSlKXcuU_hM9XQoNDQ4Q/preview" },
+                    { id: 1045, title: "Ch4 PPT", type: 'ppt', content: "基本輸入與輸出簡報。", pptUrl: "https://drive.google.com/file/d/1SgipMeV1lipmxDVn_otgGR0m_hcZu5Qm/preview" }
+                    
+                ]
+              },
+              { 
+                id: 105, 
+                title: "第5章．流程控制：if 敘述", 
+                submodules: [
+                    { id: 1051, title: "影片 5-1", type: 'video', content: "ch05-1", videoUrl: "https://drive.google.com/file/d/1w6jZUN-n8iL5RMtgpXjEZx0OdgRzByCo/preview" },
+                    { id: 1052, title: "影片 5-2", type: 'video', content: "ch05-2", videoUrl: "https://drive.google.com/file/d/1qG7HS8evjL3Par5-lY7L_4OC5UE9aHC7/preview" },
+                    { id: 1053, title: "影片 5-3", type: 'video', content: "ch05-3", videoUrl: "https://drive.google.com/file/d/1c4Aa5jzbv2MsdqlSqw8E2EIBbpbeKXUh/preview" },
+                    { id: 1054, title: "Ch5 PPT", type: 'ppt', content: "流程控制:if敘述簡報。", code: `# 變數範例\nname = "CodeMate"\nversion = 1.0\nprint(f"{name} 版本 {version}")`, pptUrl: "https://drive.google.com/file/d/1zjnRpmtsS2dbEm4jjx_UlJz-1_5TSQSf/preview" }
+                    
+                ]
+              },
+              { 
+                id: 106,
+                title: "第6章．認識串列 (List)", 
+                submodules: [
+                    { id: 10601, title: "影片 6-1", type: 'video', content: "ch06-1", videoUrl: "https://drive.google.com/file/d/1mAKdm2wdvRwAX-DwS36GeYWoYleODrIs/preview" },
+                    { id: 10602, title: "影片 6-2", type: 'video', content: "ch06-2", videoUrl: "https://drive.google.com/file/d/1mqyJjRAqO4HW4DbX6n-73uLfdiDZVDtD/preview" },
+                    { id: 10603, title: "影片 6-3", type: 'video', content: "ch06-3", videoUrl: "https://drive.google.com/file/d/16bdHDRPKb547Ujw5hmld_qx0wmyjIo_9/preview" },
+                    { id: 10604, title: "影片 6-4", type: 'video', content: "ch06-4", videoUrl: "https://drive.google.com/file/d/1o3xnSCjYe3_1O2Qn1R9RcaTINEvgL-eS/preview" },
+                    { id: 10605, title: "影片 6-5", type: 'video', content: "ch06-5", videoUrl: "https://drive.google.com/file/d/1CVZdFiT_GZckX5CApSWRMKWXfymZFRC8/preview" },
+                    { id: 10606, title: "影片 6-6", type: 'video', content: "ch06-6", videoUrl: "https://drive.google.com/file/d/1iB-8B5ZX5D3blMJ89Yqfwg2jINTuCik8/preview" },
+                    { id: 10607, title: "影片 6-7", type: 'video', content: "ch06-7", videoUrl: "https://drive.google.com/file/d/1Yk20ZL3k1Z4vV70Mh1Vb0ioB_Vs_jiWT/preview" },
+                    { id: 10608, title: "影片 6-8", type: 'video', content: "ch06-8", videoUrl: "https://drive.google.com/file/d/1v_XeX8qiVEi7aZgDcyKGLWQ9ZvdNmA9p/preview" },
+                    { id: 10609, title: "影片 6-9", type: 'video', content: "ch06-9", videoUrl: "https://drive.google.com/file/d/1UteWXpmrRyKuumD16kZbZcgul6XoTem_/preview" },
+                    { id: 10610, title: "Ch6 PPT", type: 'ppt', content: "認識串列list簡報。", pptUrl: "https://drive.google.com/file/d/19tS6wbJ8cwTnOTweUO5nXnOFrus1gEJb/preview" }
+                    
+                ]
+              },
+              { 
+                id: 107, 
+                title: "第7章．迴圈設計", 
+                submodules: [
+                    { id: 1071, title: "影片 7-1", type: 'video', content: "ch07-1", videoUrl: "https://drive.google.com/file/d/1puncyhBynW5CZKCz8ZkwuvXKeCTL7qwI/preview" },
+                    { id: 1072, title: "影片 7-2", type: 'video', content: "ch07-2", videoUrl: "https://drive.google.com/file/d/13VW1-qRwq12s0VjqFWnTXrL_QHtcwHNQ/preview" },
+                    { id: 1073, title: "影片 7-3", type: 'video', content: "ch07-3", videoUrl: "https://drive.google.com/file/d/17Jw49QPhW_mha1_ON2n0V7hEvF3MQbQs/preview" },
+                    { id: 1074, title: "影片 7-4", type: 'video', content: "ch07-4", videoUrl: "https://drive.google.com/file/d/1kFGimB3UYHtakbEHNZg4qdSJjd8oaSVv/preview" },
+                    { id: 1075, title: "影片 7-5", type: 'video', content: "ch07-5", videoUrl: "https://drive.google.com/file/d/1B8jfmclAVltIF1qfmL_OqSwivVP0NbO9/preview" },
+                    { id: 1076, title: "影片 7-6", type: 'video', content: "ch07-6", videoUrl: "https://drive.google.com/file/d/1xlPX2SaNjoyGGqr2g8GOJg8udMzzjw5m/preview" },
+                    { id: 1077, title: "影片 7-7", type: 'video', content: "ch07-7", videoUrl: "https://drive.google.com/file/d/1R8xghJBaUUmTawLuT_ZLlzrsAPNNftH1/preview" },
+                    { id: 1078, title: "影片 7-8", type: 'video', content: "ch07-8", videoUrl: "https://drive.google.com/file/d/1mewZlVhB3rIDP9JdNZlTmD2xU-532JLC/preview" },
+                    { id: 1079, title: "Ch7 PPT", type: 'ppt', content: "迴圈設計簡報。", pptUrl: "https://drive.google.com/file/d/1-nTXIdezNanixYdsAHvhsw5ouyylUVLA/preview" }
+                    
+                ]
+              },
+              { 
+                id: 109,
+                title: "第9章．字典 (Dict)", 
+                submodules: [
+                    { id: 1091, title: "影片 9-1", type: 'video', content: "ch09-1", videoUrl: "https://drive.google.com/file/d/1LU-yTh6sUqu9tFNlt0t6TbDsCoPMYmJL/preview" },
+                    { id: 1092, title: "影片 9-2", type: 'video', content: "ch09-2", videoUrl: "https://drive.google.com/file/d/1hgiEApeloUQTIyXj5SqUT_N7Lb8U7uGZ/preview" },
+                    { id: 1093, title: "影片 9-3", type: 'video', content: "ch09-3", videoUrl: "https://drive.google.com/file/d/1FAErExywjvoX0jCz9mJsHky5X-a0dYuf/preview" },
+                    { id: 1094, title: "影片 9-4", type: 'video', content: "ch09-4", videoUrl: "https://drive.google.com/file/d/175rAMJnuekE6sMmeR9fpUWKRRQnbN3Hq/preview" },
+                    { id: 1095, title: "影片 9-5", type: 'video', content: "ch09-5", videoUrl: "https://drive.google.com/file/d/1PjckDItx4PXr7lhzyCXw9OZUmJISXu8N/preview" },
+                    { id: 1096, title: "Ch9 PPT", type: 'ppt', content: "字典dict簡報。", pptUrl: "https://drive.google.com/file/d/18xRrQ_cgopJ9OWG8LjnwLu255CHaRM99/preview" }
+                    
+                ]
+              }
+          ],
+          2: [
+              { 
+                id: 201, 
+                title: "第10章．集合 (Set)",
+                submodules: [
+                    { id: 2011, title: "影片 10-1", type: 'video', content: "ch10-1", videoUrl: "https://drive.google.com/file/d/1jsAHwX5rVe2nDz_q4LWEGNvN6JkzvZRR/preview" },
+                    { id: 2012, title: "影片 10-2", type: 'video', content: "ch10-2", videoUrl: "https://drive.google.com/file/d/1wArkUzA6fjCA4lLxfRX6MA_vyKyPIH1W/preview" },
+                    { id: 2013, title: "Ch10 PPT", type: 'ppt', content: "集合set簡報。", pptUrl: "https://drive.google.com/file/d/1dEoBpolk3Qrm7HXIcpLc8Re835UxIZYb/preview" }
+                    
+                ]
+              },
+              { 
+                id: 202,
+                title: "第11章．函數設計", 
+                submodules: [
+                    { id: 20201, title: "影片 11-1", type: 'video', content: "ch11-1", videoUrl: "https://drive.google.com/file/d/1nDv0h-uyW41QeofZbRGZV03vouiCj7bz/preview" },
+                    { id: 20202, title: "影片 11-2", type: 'video', content: "ch11-2", videoUrl: "https://drive.google.com/file/d/1nLq0y5iY1HaNjrP-Te38UGIA77NqttUH/preview" },
+                    { id: 20203, title: "影片 11-3", type: 'video', content: "ch11-3", videoUrl: "https://drive.google.com/file/d/118tQbDSBnBh8TTrC31tLBEn_w4PTtPsP/preview" },
+                    { id: 20204, title: "影片 11-4", type: 'video', content: "ch11-4", videoUrl: "https://drive.google.com/file/d/1GhkXTshbQmeqQUe6KsvJt7XxwR1wF4C7/preview" },
+                    { id: 20205, title: "影片 11-5", type: 'video', content: "ch11-5", videoUrl: "https://drive.google.com/file/d/1eIZ0gI7P2t0dJd5eWmBlR5-vrWDnJbCT/preview" },
+                    { id: 20206, title: "影片 11-6", type: 'video', content: "ch11-6", videoUrl: "https://drive.google.com/file/d/1UBSKCn8QH2shniJ67vUAQGWgv_XqFNat/preview" },
+                    { id: 20207, title: "影片 11-7", type: 'video', content: "ch11-7", videoUrl: "https://drive.google.com/file/d/1TKau-g2cJBYoYQaGQ_QUqhHpjcfwGrRl/preview" },
+                    { id: 20208, title: "影片 11-8", type: 'video', content: "ch11-8", videoUrl: "https://drive.google.com/file/d/1gCq7iXwN20wXOjtWCRPgm4J7oy61uxjk/preview" },
+                    { id: 20209, title: "Ch11 PPT", type: 'ppt', content: "函數設計簡報。", pptUrl: "https://drive.google.com/file/d/1nQ8xF7lG7Jdi2VqxabqHgCeGSyPdn0C8/preview" }
+                    
+                ]
+              },
+              { 
+                id: 203,
+                title: "第12章．類別-物件導向程式設計", 
+                submodules: [
+                    { id: 20301, title: "影片 12-1", type: 'video', content: "ch12-1", videoUrl: "https://drive.google.com/file/d/1UXHMu3V-kz0OuoWbxezm4Tt_BocyeuYy/preview" },
+                    { id: 20302, title: "影片 12-2", type: 'video', content: "ch12-2", videoUrl: "https://drive.google.com/file/d/1Jd70xjj23L4tWQX0peLfqvYTIE6qtfKe/preview" },
+                    { id: 20303, title: "影片 12-3", type: 'video', content: "ch12-3", videoUrl: "https://drive.google.com/file/d/15yjuzXVsAq6j26htZIJjKaiVBRuBntFo/preview" },
+                    { id: 20304, title: "影片 12-4", type: 'video', content: "ch12-4", videoUrl: "https://drive.google.com/file/d/1t8W5WxBtiPJsmVLLml4KVN3ZYkD_yBxG/preview" },
+                    { id: 20305, title: "影片 12-5", type: 'video', content: "ch12-5", videoUrl: "https://drive.google.com/file/d/1GvwSP1BaLKaO5x91DUne_UJ6woK4_YAc/preview" },
+                    { id: 20306, title: "影片 12-6", type: 'video', content: "ch12-6", videoUrl: "https://drive.google.com/file/d/1wrRkmzKqgwV5oknD_-h1tyWZFZxgK1EP/preview" },
+                    { id: 20307, title: "影片 12-7", type: 'video', content: "ch12-7", videoUrl: "https://drive.google.com/file/d/11AsulWkN9GUI3lu36QpnINScU2nVoEbm/preview" },
+                    { id: 20308, title: "Ch12 PPT", type: 'ppt', content: "類別物件導向程式設計簡報。", pptUrl: "https://drive.google.com/file/d/1gUfZM9TLjHELdU8NvuthXZYs_q-PzpoZ/preview" }
+                    
+                ]
+              },
+              { 
+                id: 204,
+                title: "第14章．檔案的讀取與寫入", 
+                submodules: [
+                    { id: 20401, title: "影片 14-1", type: 'video', content: "ch14-1", videoUrl: "https://drive.google.com/file/d/1VIldAr-lk1Fg2Y2ImOebkLPC1U-nUUNQ/preview" },
+                    { id: 20402, title: "影片 14-2", type: 'video', content: "ch14-2", videoUrl: "https://drive.google.com/file/d/1GwIiw165_Tt9z9bWYTisYR9ia5mo-K6T/preview" },
+                    { id: 20403, title: "影片 14-3", type: 'video', content: "ch14-3", videoUrl: "https://drive.google.com/file/d/1WPkgNbji005sMnkkZ9I0qAl1y1YsbI0e/preview" },
+                    { id: 20404, title: "影片 14-4", type: 'video', content: "ch14-4", videoUrl: "https://drive.google.com/file/d/1XI9mRLRDyx5E7qZTX3MrCfkrGMcZdueZ/preview" },
+                    { id: 20405, title: "影片 14-5", type: 'video', content: "ch14-5", videoUrl: "https://drive.google.com/file/d/1Y1JDQOvJsCqX0HZDTGS0E2V59E1yMCAa/preview" },
+                    { id: 20406, title: "影片 14-6", type: 'video', content: "ch14-6", videoUrl: "https://drive.google.com/file/d/13zBnQIJ26OhibKDRCX1RcM4-e04tmXmX/preview" },
+                    { id: 20407, title: "影片 14-7", type: 'video', content: "ch14-7", videoUrl: "https://drive.google.com/file/d/1-omN2XyOuE7ET9j3jq1W95bWo0TeNqnx/preview" },
+                    { id: 20408, title: "影片 14-8", type: 'video', content: "ch14-8", videoUrl: "https://drive.google.com/file/d/19xXOBsR8BgIH8-oNsyWik3SlmU7hk4pM/preview" },
+                    { id: 20409, title: "影片 14-9", type: 'video', content: "ch14-9", videoUrl: "https://drive.google.com/file/d/1o7ipa5R9uK42YvSJJhcbQrEWeoYB0TzM/preview" },
+                    { id: 20410, title: "影片 14-10", type: 'video', content: "ch14-10", videoUrl: "https://drive.google.com/file/d/1o7ipa5R9uK42YvSJJhcbQrEWeoYB0TzM/preview" },
+                    { id: 20411, title: "Ch14 PPT", type: 'ppt', content: "檔案的讀取與寫入簡報。", pptUrl: "https://drive.google.com/file/d/1Bvq6ZdAvAm2oF-ktLWeVLiCEtSNGB8xH/preview" }
+                    
+                ]
+              },
+              { 
+                id: 205, 
+                title: "第15章．程式除錯與異常處理",
+                submodules: [
+                    { id: 2051, title: "影片 15-1", type: 'video', content: "ch15-1", videoUrl: "https://drive.google.com/file/d/1GGa9vT1UulGGzAWquIv9zDO9cma_OeN1/preview" },
+                    { id: 2052, title: "影片 15-2", type: 'video', content: "ch15-2", videoUrl: "https://drive.google.com/file/d/1WlJweU-1R8MMfyfzahyo2qY-E1NtRO5V/preview" },
+                    { id: 2053, title: "影片 15-3", type: 'video', content: "ch15-3", videoUrl: "https://drive.google.com/file/d/1uLjefZmxU-dVgVtstpKn1WU-bDO1J0yT/preview" },
+                    { id: 2054, title: "Ch15 PPT", type: 'ppt', content: "程式除錯與異常處理簡報。", pptUrl: "https://drive.google.com/file/d/15CCKPpCGoOAlvDBOFXmp_rf5-JZir3he/preview" }
+                    
+                ]
+              }
+          ]
+      };
+
+      const getInitialPage = () => {
+        const hash = window.location.hash.substring(1);
+        const validPages = ['auth', 'intro', 'learning'];
+        const storedId = localStorage.getItem('studentId');
+        if (validPages.includes(hash)) {
+          if ((hash === 'intro' || hash === 'learning') && !storedId) return 'auth';
+          return hash;
+        }
+        return storedId ? 'intro' : 'auth';
+      };
+      
+      const [page, setPage] = useState(getInitialPage);
+
+      useEffect(() => {
+        const initialPage = getInitialPage();
+        setPage(initialPage);
+        window.history.replaceState({ page: initialPage }, '', `#${initialPage}`);
+        const storedId = localStorage.getItem('studentId');
+        const storedName = localStorage.getItem('studentName');
+        if (storedId && storedName) {
+          setIsLoggedIn(true);
+          setStudentId(storedId);
+          setWelcomeMessage(`歡迎回來, ${storedName} (${storedId})!`);
+        }
+      }, []);
+      
+      useEffect(() => {
+        const handlePopState = (event) => {
+          setPage((event.state && event.state.page) ? event.state.page : getInitialPage());
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, []);
+
+      useEffect(() => {
+        const currentHash = window.location.hash.substring(1);
+        if (page !== currentHash) {
+          window.history.pushState({ page: page }, '', `#${page}`);
+        }
+      }, [page]);
+      
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [chatMessages]);
+
+      useEffect(() => {
+        if (page === 'learning' && isLoggedIn && studentId) {
+          setCourses(mockCourses);
+          const savedProgressRaw = localStorage.getItem(`progress_${studentId}`);
+
+          if (savedProgressRaw) {
+            try {
+              const savedProgress = JSON.parse(savedProgressRaw);
+              
+              const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
+              if (!lastCourse) {
+                  console.error("No courses available to load progress from.");
+                  return;
+              }
+              
+              const courseModules = mockModules[lastCourse.id] || [];
+              
+              const lastModuleId = savedProgress.lastModuleId;
+              let lastModule = null;
+              let parentModule = null;
+
+              for (const module of courseModules) {
+                  if (module.id === lastModuleId) { lastModule = module; break; }
+                  if (module.submodules) {
+                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
+                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
+                  }
+              }
+
+              if (!lastModule && courseModules.length > 0) {
+                  const firstModule = courseModules[0];
+                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
+                  if (firstModule.submodules) parentModule = firstModule;
+              }
+              
+              setSelectedCourse(lastCourse);
+              setModules(courseModules);
+              setCurrentModule(lastModule);
+              if (parentModule) {
+                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
+              }
+              
+              if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
+                  setTabs(savedProgress.tabs);
+                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
+                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
+              } else if (lastModule) {
+                  handleModuleSelect(lastModule, true);
+              }
+              
+              setChatMessages(savedProgress.chat && Array.isArray(savedProgress.chat) ? savedProgress.chat : [{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+
+            } catch (error) {
+              console.error("讀取進度失敗，將重設為預設值:", error);
+              localStorage.removeItem(`progress_${studentId}`);
+              if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+            }
+          } else {
+            if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+          }
+        }
+      }, [page, isLoggedIn, studentId]);
+
+      useEffect(() => {
+          if (page === 'learning' && isLoggedIn && currentModule && studentId) {
+              const progress = {
+                  lastCourseId: selectedCourse?.id,
+                  lastModuleId: currentModule.id,
+                  tabs: tabs,
+                  activeTabId: activeTabId,
+                  chat: chatMessages
+              };
+              localStorage.setItem(`progress_${studentId}`, JSON.stringify(progress));
+          }
+      }, [tabs, activeTabId, currentModule, chatMessages, studentId]);
+
+      const showMessageModal = (msg) => {
+        setMessage(msg);
+        setShowMessage(true);
+        setTimeout(() => setShowMessage(false), 2000);
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('studentId');
+        localStorage.removeItem('studentName');
+        localStorage.removeItem(`progress_${studentId}`);
+        setIsLoggedIn(false);
+        setPage('auth');
+        setStudentId('');
+        setStudentName('');
+        setPassword('');
+        setCourses([]);
+        setTabs([]);
+        setActiveTabId(null);
+        setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+        showMessageModal('您已成功登出。');
+      };
+
+      const handleAction = async (event) => {
+        event.preventDefault();
+
+        if (!studentId.trim() || !password.trim() || (!isLoginView && !studentName.trim())) {
+          showMessageModal('所有欄位皆為必填。');
+          return;
+        }
+
+        const backendUrl = 'http://localhost:3000';
+        const endpoint = isLoginView ? `${backendUrl}/api/login` : `${backendUrl}/api/register`;
+        const payload = isLoginView ? { studentId, password } : { studentId, name: studentName, password };
+        
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await response.json();
+
+            if (response.ok) {
+                if (isLoginView) {
+                    localStorage.setItem('studentId', studentId);
+                    localStorage.setItem('studentName', data.name);
+                    setIsLoggedIn(true);
+                    setWelcomeMessage(`歡迎回來, ${data.name} (${studentId})!`);
+                    showMessageModal(data.message || '登入成功！');
+                    setPage('intro');
+                } else {
+                    showMessageModal(data.message || '註冊成功！請使用您的學號登入。');
+                    setIsLoginView(true);
+                    setStudentId('');
+                    setStudentName('');
+                    setPassword('');
+                }
+            } else {
+                showMessageModal(`${isLoginView ? '登入' : '註冊'}失敗: ${data.message}`);
+            }
+        } catch (error) {
+            console.error('請求失敗:', error);
+            showMessageModal('與伺服器連線失敗，請檢查後端伺服器是否正在運行。');
+        }
+      };
+      
+      const saveConversation = async (messagesToSave) => {
+        if (!studentId) return;
+        try {
+            await fetch('http://localhost:3000/api/log/conversation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    studentId: studentId,
+                    conversation: messagesToSave
+                })
+            });
+        } catch (error) {
+            console.error("無法儲存對話紀錄:", error);
+        }
+      };
+
+      const handleFeedback = (messageId, feedbackType) => {
+        const updatedMessages = chatMessages.map(msg => 
+            msg.id === messageId ? { ...msg, feedback: feedbackType } : msg
+        );
+        setChatMessages(updatedMessages);
+        saveConversation(updatedMessages); // Save after feedback
+      };
+
+      const handleSendChat = async () => {
+        if (!chatInput.trim() || isAiResponding) return;
+
+        setIsAiResponding(true);
+        const userMessage = { id: Date.now(), sender: 'user', content: chatInput, timestamp: new Date().toISOString(), feedback: null };
+        const thinkingMessageId = Date.now() + 1; 
+        const thinkingMessage = { id: thinkingMessageId, sender: 'ai', content: 'AI 助教正在思考...', timestamp: new Date().toISOString(), feedback: null };
+
+        const messagesForApi = [...chatMessages, userMessage];
+        setChatMessages([...messagesForApi, thinkingMessage]);
+        setChatInput('');
+
+        const systemPrompt = "你是一位 CodeMate 學習平台上的 Python 程式設計助教。你的核心任務是引導學生完成他們的實作作業，而不是直接給出完整答案。平台上已經有詳細的 PPT 教材，所以你不需要從頭解釋基本概念。當學生提問時，請遵循以下原則：\n1. **不提供完整程式碼**：絕對不要直接給出完整的程式碼解答。\n2. **使用引導式提問**：透過提問來引導學生思考。例如：「你覺得這個迴圈的目的是什麼？」、「這個變數應該在哪裡宣告會比較好？」、「如果輸入是 0，你這段程式會發生什麼事？」\n3. **提供小提示**：給予方向性的提示或相關的關鍵字，讓學生可以自己去查閱 PPT 或思考。例如：「也許你可以回想一下第六章關於 list 的操作方法。」、「這裡可能需要用到 if/else 的判斷喔。」\n4. **分解問題**：引導學生將大問題拆解成數個小步驟來完成。\n5. **保持鼓勵與耐心**：維持友善且鼓勵的語氣，讓學生感覺你是在跟他一起解決問題的夥伴。請務必使用繁體中文回答。";
+
+        const apiHistory = messagesForApi.map(msg => ({
+            role: msg.sender === 'ai' ? 'model' : 'user',
+            parts: [{ text: msg.content }]
+        }));
+        
+        const payload = { contents: apiHistory, systemInstruction: { parts: [{ text: systemPrompt }] } };
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null); 
+                const message = errorData?.error?.message || `API 請求失敗，狀態碼: ${response.status}`;
+                throw new Error(message);
+            }
+
+            const result = await response.json();
+            const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我現在無法回答。";
+            
+            let finalMessages;
+            setChatMessages(prev => {
+                finalMessages = prev.map(msg => msg.id === thinkingMessageId ? { ...msg, content: aiText } : msg);
+                return finalMessages;
+            });
+            saveConversation(finalMessages);
+
+        } catch (error) {
+            console.error("Gemini API 錯誤:", error);
+            const errorMessageContent = `抱歉，發生錯誤：${error.message}`;
+            let errorMessages;
+            setChatMessages(prev => {
+                errorMessages = prev.map(msg => msg.id === thinkingMessageId ? { ...msg, content: errorMessageContent } : msg);
+                return errorMessages;
+            });
+            saveConversation(errorMessages);
+        } finally {
+            setIsAiResponding(false);
+        }
+      };
+
+      const handleCourseSelect = (course) => {
+        setSelectedCourse(course);
+        const courseModules = mockModules[course.id] || [];
+        setModules(courseModules);
+        setExpandedModules({});
+        if (courseModules.length > 0) {
+          const firstModule = courseModules[0];
+          const initialModule = (firstModule.submodules && firstModule.submodules.length > 0) ? firstModule.submodules[0] : firstModule;
+          handleModuleSelect(initialModule);
+          if (firstModule.submodules) {
+            setExpandedModules({ [firstModule.id]: true });
+          }
+        } else {
+          setCurrentModule(null);
+          setTabs([]);
+          setActiveTabId(null);
+        }
+      };
+      
+      const toggleModuleExpansion = (moduleId) => {
+          setExpandedModules(prev => ({...prev, [moduleId]: !prev[moduleId]}));
+      };
+
+      const handleModuleSelect = (module, isLoading = false) => {
+        setCurrentModule(module);
+        if (!isLoading) {
+          const newTab = { id: nextTabId, type: 'code', title: 'Code 1', content: '', output: '', error: '' };
+          setTabs([newTab]);
+          setActiveTabId(newTab.id);
+          setNextTabId(prev => prev + 1);
+        }
+      };
+      
+      const handleAddTab = (type) => {
+        const newTabNumber = tabs.filter(t => t.type === type).length + 1;
+        const newTab = {
+          id: nextTabId,
+          type: type,
+          title: type === 'code' ? `Code ${newTabNumber}` : `Note ${newTabNumber}`,
+          content: type === 'code' ? '' : '',
+          ...(type === 'code' && { output: '', error: '' })
+        };
+        setTabs([...tabs, newTab]);
+        setActiveTabId(newTab.id);
+        setNextTabId(prev => prev + 1);
+      };
+
+      const handleTabContentChange = (id, newContent) => {
+        setTabs(tabs.map(tab => tab.id === id ? { ...tab, content: newContent } : tab));
+      };
+      
+      const handleRunCode = async (tabId) => {
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab) return;
+
+        setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
+
+        try {
+            const response = await fetch('http://localhost:3000/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: tab.content })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    throw new Error(errorJson.error || `伺服器錯誤: ${response.statusText}`);
+                } catch (e) {
+                    throw new Error(errorText);
+                }
+            }
+
+            const result = await response.json();
+            setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: result.output, error: result.error } : t));
+
+        } catch (err) {
+            console.error("程式碼執行錯誤:", err);
+            setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '', error: err.message } : t));
+        }
+      };
+      
+      const handleRemoveTab = (id) => {
+        const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
+        const newTabs = tabs.filter(tab => tab.id !== id);
+        if (newTabs.length > 0 && activeTabId === id) {
+            setActiveTabId(newTabs[Math.max(0, tabToRemoveIndex - 1)].id);
+        } else if (newTabs.length === 0) {
+            setActiveTabId(null);
+        }
+        setTabs(newTabs);
+      };
+
+      const renderAuthContent = () => {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen p-4">
+            <h1 className="text-5xl font-extrabold text-blue-600 mb-4 tracking-wide">CodeMate</h1>
+            <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm mx-auto border border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+                {isLoginView ? '學生登入' : '學生註冊'}
+              </h2>
+              <form className="space-y-6" onSubmit={handleAction}>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="student-id-input" className="text-sm font-medium text-gray-700">學號</label>
+                  <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+                    className="w-64 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out" />
+                </div>
+                {!isLoginView && (
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="student-name-input" className="text-sm font-medium text-gray-700">姓名</label>
+                    <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+                      className="w-64 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password-input" className="text-sm font-medium text-gray-700">密碼</label>
+                  <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
+                    className="w-64 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out" />
+                </div>
+                <div className="pt-4">
+                  <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 ease-in-out">
+                    {isLoginView ? '登入' : '註冊'}
+                  </button>
+                </div>
+                <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-blue-500 hover:text-indigo-600 mt-2 text-sm">
+                  {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      };
+      
+      const renderIntroContent = () => { return(
+          <div className="relative bg-white p-12 rounded-2xl shadow-lg w-full max-w-2xl text-center border border-gray-200">
+            <h2 className="text-4xl font-bold text-gray-800 mb-4">歡迎來到 CodeMate！</h2>
+            <p className="text-xl text-gray-600 mb-8">{welcomeMessage}</p>
+            <p className="text-lg text-gray-700 max-w-2xl mx-auto">
+              CodeMate 是一個專為您量身打造的 Python 學習平台。我們提供：
+            </p>
+            <p className="text-left pl-20">
+              <strong>豐富的教材</strong>：包含簡報和影片。<br />
+              <strong>適性化聊天機器人</strong>：隨時提問，獲得即時且個人化的解說。<br />
+              <strong>程式執行區</strong>：讓您能立即練習所學。<br />
+            </p>
+            <div className="flex justify-end pt-8">
+              <button onClick={() => setPage('learning')} className="bg-gradient-to-r from-green-500 to-teal-600 text-white font-semibold py-4 px-8 rounded-lg shadow-lg hover:from-green-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300 ease-in-out">
+                開始學習
+              </button>
+            </div>
+          </div>
+      )};
+      
+      const renderLearningContent = () => {
+        const activeTab = tabs.find(tab => tab.id === activeTabId);
+        
+        return (
+          <div className="flex h-full w-full p-4 gap-4 bg-white">
+            <div className="w-1/5 flex flex-col bg-gray-50 rounded-lg p-4 border">
+              <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2"><Icon name="book" className="w-6 h-6 text-blue-600"/>課程列表</h2>
+              <div className="flex-1 overflow-y-auto pr-2">
+                {courses.map(course => (
+                  <div key={course.id} className="mb-3">
+                    <div onClick={() => handleCourseSelect(course)} className={`p-3 rounded-lg cursor-pointer transition-all ${selectedCourse?.id === course.id ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-200'}`}>
+                      <h3 className="font-semibold text-gray-700">{course.title}</h3>
+                    </div>
+                    {selectedCourse?.id === course.id && (
+                      <div className="mt-2 pl-2 space-y-1">
+                        {modules.map(module => module.submodules ? (
+                          <div key={module.id}>
+                            <div onClick={() => toggleModuleExpansion(module.id)} className="flex justify-between items-center p-2 rounded-md cursor-pointer hover:bg-gray-200">
+                                <span className="font-medium text-gray-600">{module.title}</span>
+                                <Icon name="chevron" className="w-5 h-5 text-gray-500" isExpanded={expandedModules[module.id]} />
+                            </div>
+                            {expandedModules[module.id] && (
+                                <div className="pl-4 mt-1 border-l-2 border-blue-300 space-y-1">
+                                    {module.submodules.map(submodule => (
+                                        <div key={submodule.id} onClick={() => handleModuleSelect(submodule)} className={`p-2 rounded-md cursor-pointer text-sm text-gray-600 transition-all ${currentModule?.id === submodule.id ? 'bg-blue-200 font-semibold' : 'hover:bg-blue-100'}`}>
+                                            {submodule.title}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div key={module.id} onClick={() => handleModuleSelect(module)} className={`p-2 rounded-md cursor-pointer text-sm text-gray-600 transition-all ${currentModule?.id === module.id ? 'bg-blue-200 font-semibold' : 'hover:bg-blue-100'}`}>
+                            {module.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="w-1/2 flex flex-col gap-4">
+              <div className="flex-1 flex flex-col bg-gray-50 rounded-lg p-4 border">
+                  <h3 className="text-xl font-bold mb-4 text-gray-800">上次進度 / {currentModule?.title || '第一課'}</h3>
+                  <div className="flex-1 bg-black rounded-lg flex items-center justify-center text-white flex-col overflow-hidden">
+                      {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
+                      {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
+                      {!currentModule && <p>請選擇一個課程</p>}
+                  </div>
+              </div>
+
+              <div className="h-2/5 flex flex-col bg-gray-50 rounded-lg border">
+                  <div className="flex border-b p-2 items-center gap-2">
+                      {tabs.map(tab => (
+                          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`flex items-center py-1 px-2 rounded-md cursor-pointer text-xs ${activeTabId === tab.id ? 'bg-white shadow-sm ring-1 ring-inset ring-gray-200' : 'hover:bg-gray-200'}`}>
+                              <span>{tab.title}</span>
+                              <button onClick={(e) => {e.stopPropagation(); handleRemoveTab(tab.id);}} className="ml-2 text-gray-400 hover:text-red-500">✕</button>
+                          </div>
+                      ))}
+                      <div className="ml-auto flex items-center gap-2">
+                        <button onClick={() => handleAddTab('code')} className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200">+ Code</button>
+                        <button onClick={() => handleAddTab('note')} className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200">+ Note</button>
+                      </div>
+                  </div>
+                  <div className="flex-1 p-2 overflow-y-auto">
+                      {activeTab?.type === 'code' && (
+                          <div className="h-full flex flex-col">
+                              <div className="flex-1 flex flex-col">
+                                  <textarea
+                                      key={activeTab.id}
+                                      value={activeTab.content}
+                                      onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
+                                      className="code-textarea flex-1"
+                                      placeholder="# 在此編寫您的 Python 程式碼..."
+                                  />
+                              </div>
+                              <div className="pt-2 flex items-start gap-2">
+                                <button 
+                                    onClick={() => handleRunCode(activeTab.id)} 
+                                    disabled={!activeTab || activeTab.output === '執行中...'}
+                                    className="bg-green-500 text-white py-1 px-3 rounded hover:bg-green-600 text-sm disabled:bg-gray-400"
+                                >
+                                    {activeTab.output === '執行中...' ? '執行中...' : '執行'}
+                                </button>
+                                <div className="flex-1 text-xs">
+                                  {activeTab.output && activeTab.output !== '執行中...' && <pre className="p-2 bg-gray-100 rounded whitespace-pre-wrap"><strong>輸出:</strong> {activeTab.output}</pre>}
+                                  {activeTab.error && <pre className="p-2 bg-red-100 text-red-700 rounded whitespace-pre-wrap"><strong>錯誤:</strong> {activeTab.error}</pre>}
+                                </div>
+                              </div>
+                          </div>
+                      )}
+                      {activeTab?.type === 'note' && (
+                          <textarea
+                              value={activeTab.content}
+                              onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
+                              className="w-full h-full p-2 border rounded-md resize-none"
+                              placeholder="輸入你的筆記..."
+                          />
+                      )}
+                      {!activeTab && <div className="text-gray-500 p-4">請新增一個分頁開始。</div>}
+                  </div>
+              </div>
+            </div>
+            
+            <div className="w-3/10 flex flex-col bg-blue-50 rounded-lg p-4 border shadow-inner">
+              <h2 className="text-xl font-bold mb-4 text-blue-800">AI 助教</h2>
+              <div className="flex-1 overflow-y-auto bg-white rounded-lg p-3 shadow-sm mb-4">
+                {chatMessages.map((msg) => (
+                  <div key={msg.id}>
+                    <div className={`mb-1 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-blue-500 text-white ml-auto rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}>
+                      <p>{msg.content}</p>
+                      <div className={`text-xs mt-1 text-right ${msg.sender === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    </div>
+                    {msg.sender === 'ai' && (
+                        <div className="flex justify-start gap-2 mb-3 ml-1">
+                            <button onClick={() => handleFeedback(msg.id, 'up')} className={`feedback-btn ${msg.feedback === 'up' ? 'selected' : ''}`}>
+                                <Icon name="thumb_up" className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleFeedback(msg.id, 'down')} className={`feedback-btn ${msg.feedback === 'down' ? 'selected' : ''}`}>
+                                <Icon name="thumb_down" className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+              <div className="flex gap-2">
+                <textarea
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendChat())}
+                  placeholder={isAiResponding ? "AI 助教正在回覆..." : "輸入你的問題..."}
+                  className="flex-1 p-2 border rounded-lg resize-none disabled:bg-gray-200"
+                  rows="2"
+                  disabled={isAiResponding}
+                />
+                <button onClick={handleSendChat} disabled={!chatInput.trim() || isAiResponding} className="bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center">
+                  <Icon name="send" className="w-5 h-5"/>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderContent = () => {
+        switch (page) {
+          case 'auth': return renderAuthContent();
+          case 'intro': return <div className="flex items-center justify-center h-full">{renderIntroContent()}</div>;
+          case 'learning': return renderLearningContent();
+          default: return renderAuthContent();
+        }
+      };
+
+      return (
+        <div className="h-full flex flex-col">
+            {page !== 'auth' && (
+                <header className="h-14 bg-white shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0">
+                    <h1 className="text-3xl font-extrabold text-blue-600">CodeMate</h1>
+                     {isLoggedIn && (
+                        <button onClick={handleLogout} className="bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-red-600">
+                            登出
+                        </button>
+                    )}
+                </header>
+            )}
+            <main className="flex-1 overflow-hidden">
+                {renderContent()}
+            </main>
+          
+          {showMessage && (
+            <div className="fixed top-5 right-5 bg-black text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
+              {message}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const container = document.getElementById('root');
+    const root = createRoot(container);
+    root.render(<App />);
+</script>
+
+</body>
+</html>
