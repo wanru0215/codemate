@@ -511,17 +511,6 @@
         setChatMessages([...messagesForApi, thinkingMessage]);
         setChatInput('');
 
-        const apiKey = "AIzaSyCDLdBDxLPL1aK8J6-J5aBw-BN8XttuUzk";
-        
-        if (!apiKey || apiKey === "請在這裡貼上您的 Google AI Studio API 金鑰") {
-            const errorMessage = "診斷：API 金鑰未設定。請在程式碼中填入您的 Google AI Studio API 金鑰。";
-            setChatMessages(prev => prev.map(msg => msg.id === thinkingMessageId ? { ...msg, content: errorMessage } : msg));
-            setIsAiResponding(false);
-            return;
-        }
-
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
         const systemPrompt = "你是一位 CodeMate 學習平台上的 Python 程式設計助教。你的核心任務是引導學生完成他們的實作作業，而不是直接給出完整答案。平台上已經有詳細的 PPT 教材，所以你不需要從頭解釋基本概念。當學生提問時，請遵循以下原則：\n1. **不提供完整程式碼**：絕對不要直接給出完整的程式碼解答。\n2. **使用引導式提問**：透過提問來引導學生思考。例如：「你覺得這個迴圈的目的是什麼？」、「這個變數應該在哪裡宣告會比較好？」、「如果輸入是 0，你這段程式會發生什麼事？」\n3. **提供小提示**：給予方向性的提示或相關的關鍵字，讓學生可以自己去查閱 PPT 或思考。例如：「也許你可以回想一下第六章關於 list 的操作方法。」、「這裡可能需要用到 if/else 的判斷喔。」\n4. **分解問題**：引導學生將大問題拆解成數個小步驟來完成。\n5. **保持鼓勵與耐心**：維持友善且鼓勵的語氣，讓學生感覺你是在跟他一起解決問題的夥伴。請務必使用繁體中文回答。";
 
         const apiHistory = messagesForApi.map(msg => ({
@@ -532,7 +521,7 @@
         const payload = { contents: apiHistory, systemInstruction: { parts: [{ text: systemPrompt }] } };
 
         try {
-            const response = await fetch(apiUrl, {
+            const response = await fetch("/api/chat", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -911,4 +900,5 @@
 
 </body>
 </html>
+
 
