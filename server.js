@@ -7,14 +7,14 @@ const { spawn } = require('child_process'); // 用於執行外部程式
 
 // 2. 初始化 Express 應用
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 // 3. 設定中間件 (Middleware)
 app.use(cors());
 app.use(express.json());
 
 // --- 資料庫連線 ---
-const mongoURI = process.env.MONGO_URI;
+const mongoURI = 'mongodb+srv://user:WXXrWGcC9Z0LiYT3@cluster0.t2r6dop.mongodb.net/SCU?retryWrites=true&w=majority';
 
 mongoose.connect(mongoURI)
   .then(() => console.log('成功連接到 MongoDB (SCU 資料庫)'))
@@ -97,6 +97,37 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+const fetch = require("node-fetch"); // 如果 Node 18+ 可以不用裝
+
+// Gemini API Proxy
+app.post("/api/chat", async (req, res) => {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY; // 從 Render 環境變數讀取
+        if (!apiKey) {
+            return res.status(500).json({ error: "缺少 GEMINI_API_KEY 環境變數" });
+        }
+
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(req.body), // 前端傳來的 payload 原封不動傳給 Gemini
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return res.status(response.status).json(data);
+        }
+
+        res.json(data);
+    } catch (err) {
+        console.error("Gemini API Proxy 錯誤:", err);
+        res.status(500).json({ error: "伺服器內部錯誤，無法呼叫 Gemini API" });
+    }
+});
+
 // 執行程式碼 API: /api/execute
 app.post('/api/execute', (req, res) => {
     const { code } = req.body;
@@ -145,7 +176,6 @@ app.post('/api/log/conversation', async (req, res) => {
         res.status(500).json({ message: "伺服器內部錯誤" });
     }
 });
-
 
 // 4. 啟動伺服器
 app.listen(PORT, () => {
