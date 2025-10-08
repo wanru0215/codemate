@@ -1,11 +1,12 @@
 // 1. 引入需要的模組
+require('dotenv').config(); // 載入 .env 檔案中的環境變數
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const { spawn } = require('child_process'); // 用於執行外部程式
 const path = require("path");
-const fetch = require("node-fetch"); // 如果 Node 18+ 可用全域 fetch
+const fetch = require("node-fetch"); 
 
 // 2. 初始化 Express 應用
 const app = express();
@@ -16,10 +17,9 @@ app.use(cors());
 app.use(express.json());
 
 // --- 前端靜態檔案 ---
-// 假設你的 index.html 在 public 資料夾
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname)));
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // --- 資料庫連線 ---
@@ -39,13 +39,11 @@ const studentSchema = new mongoose.Schema({
 });
 const Student = mongoose.model('Student', studentSchema, 'Students');
 
-// <<< --- 學習紀錄的 Schema & Model --- >>>
 const messageSchema = new mongoose.Schema({
   id: { type: Number, required: true },
   sender: { type: String, required: true },
   content: { type: String, required: true },
-  timestamp: { type: Date, required: true },
-  feedback: { type: String, enum: ['up', 'down', null], default: null }
+  timestamp: { type: Date, required: true }
 }, { _id: false });
 
 const learningRecordSchema = new mongoose.Schema({
@@ -103,29 +101,75 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Gemini API Proxy
+// Gemini API 代理 (個人化版本)
 app.post("/api/chat", async (req, res) => {
+  console.log("1. [API Chat] 收到前端個人化請求...");
+
   try {
+    const { contents, systemInstruction, studentId } = req.body;
+
+    if (!studentId || !contents) {
+        return res.status(400).json({ error: { message: "請求中缺少 studentId 或 contents" } });
+    }
+
+    // --- 步驟 1: 從 MongoDB 讀取歷史對話作為風格範例 ---
+    const record = await LearningRecord.findOne({ studentId });
+    const fullHistory = record?.conversation || [];
+    const fewShotExamples = [];
+    if (fullHistory.length > 1) {
+        console.log(`2. [API Chat] 找到學生 ${studentId} 的歷史紀錄，正在準備風格範例...`);
+        let pairsFound = 0;
+        // 從後往前找，最多找 2 對完整的 (AI -> User) -> (User -> AI) 對話
+        for (let i = fullHistory.length - 1; i > 0 && pairsFound < 2; i--) {
+            // 我們要找 user 提問，且前面是 ai 回答的組合
+            if (fullHistory[i].sender === 'user' && fullHistory[i-1].sender === 'ai') {
+                fewShotExamples.unshift({ role: 'model', parts: [{ text: fullHistory[i-1].content }] });
+                fewShotExamples.unshift({ role: 'user', parts: [{ text: fullHistory[i].content }] });
+                pairsFound++;
+            }
+        }
+    }
+
+    // --- 步驟 2: 組合最終的提示 (Prompt) ---
+    const finalContents = [
+        ...fewShotExamples,
+        ...contents
+    ];
+    
+    const finalPayload = {
+        contents: finalContents,
+        systemInstruction: systemInstruction
+    };
+
+    // --- 步驟 3: 呼叫 Gemini API ---
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "缺少 GEMINI_API_KEY 環境變數" });
+      return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
     }
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+    const modelName = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
-    const response = await fetch(apiUrl, {
+    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
+
+    const geminiResponse = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(finalPayload),
     });
+    
+    const data = await geminiResponse.json();
 
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json(data);
+    if (!geminiResponse.ok) {
+        console.error("4. [API Chat] Gemini API 錯誤:", JSON.stringify(data, null, 2));
+        return res.status(geminiResponse.status).json(data);
     }
+    
+    console.log("5. [API Chat] 收到 Gemini 回應，準備回傳前端。");
     res.json(data);
+
   } catch (err) {
-    console.error("Gemini API Proxy 錯誤:", err);
-    res.status(500).json({ error: "伺服器內部錯誤，無法呼叫 Gemini API" });
+    console.error("6. [API Chat] 代理請求過程中發生嚴重錯誤:", err);
+    res.status(500).json({ error: { message: "伺服器內部錯誤，無法呼叫 Gemini API" } });
   }
 });
 
@@ -143,7 +187,8 @@ app.post('/api/execute', (req, res) => {
   pythonProcess.on('close', () => {
     res.json({ output, error });
   });
-  pythonProcess.on('error', () => {
+  pythonProcess.on('error', (err) => {
+     console.error("執行 Python 時出錯:", err);
     res.status(500).json({ error: '伺服器無法執行 Python 程式碼。' });
   });
 });
@@ -152,8 +197,11 @@ app.post('/api/execute', (req, res) => {
 app.post('/api/log/conversation', async (req, res) => {
   try {
     const { studentId, conversation } = req.body;
-    if (!studentId || !Array.isArray(conversation)) {
-      return res.status(400).json({ message: "缺少學生 ID 或對話內容" });
+    if (!studentId) {
+      return res.status(400).json({ message: "儲存失敗：請求中缺少學生 ID" });
+    }
+    if (!conversation || !Array.isArray(conversation)) {
+      return res.status(400).json({ message: "儲存失敗：對話內容格式不正確" });
     }
     await LearningRecord.findOneAndUpdate(
       { studentId: studentId },
@@ -167,7 +215,34 @@ app.post('/api/log/conversation', async (req, res) => {
   }
 });
 
+// 取得對話紀錄 API
+app.get('/api/log/conversation/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+    // 使用 MongoDB 的 $slice 投影運算子，只取得 conversation 陣列中的最後 50 筆紀錄。
+    // 這可以大幅提升前端載入效能，同時完整保留資料庫中的歷史數據。
+    const record = await LearningRecord.findOne(
+        { studentId },
+        { conversation: { $slice: -50 } }
+    );
+
+    if (record && record.conversation) {
+      res.status(200).json(record.conversation);
+    } else {
+      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
+    }
+  } catch (error) {
+    console.error("讀取對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+
+
 // 4. 啟動伺服器
 app.listen(PORT, () => {
   console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行`);
 });
+
