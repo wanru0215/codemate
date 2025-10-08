@@ -16,11 +16,10 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// --- 前端靜態檔案 ---
-app.use(express.static(path.join(__dirname)));
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
+// --- 核心修改點：前端靜態檔案 ---
+// 將靜態檔案的目錄指向 'public' 資料夾
+// Express 會自動在此資料夾中尋找 index.html 作為根路徑的回應
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- 資料庫連線 ---
 const mongoURI = process.env.MONGO_URI || 'mongodb+srv://user:WXXrWGcC9Z0LiYT3@cluster0.t2r6dop.mongodb.net/SCU?retryWrites=true&w=majority';
@@ -222,8 +221,6 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
     if (!studentId) {
       return res.status(400).json({ message: '缺少學生 ID' });
     }
-    // 使用 MongoDB 的 $slice 投影運算子，只取得 conversation 陣列中的最後 50 筆紀錄。
-    // 這可以大幅提升前端載入效能，同時完整保留資料庫中的歷史數據。
     const record = await LearningRecord.findOne(
         { studentId },
         { conversation: { $slice: -50 } }
@@ -240,18 +237,6 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
   }
 });
 
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 靜態檔案伺服
-app.use(express.static(path.join(__dirname, "public")));
-
-// 根路徑導向 index.html
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
 
 // 4. 啟動伺服器
 app.listen(PORT, () => {
