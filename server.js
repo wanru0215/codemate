@@ -240,6 +240,19 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
   }
 });
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 靜態檔案伺服
+app.use(express.static(path.join(__dirname, "public")));
+
+// 根路徑導向 index.html
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 // 4. 啟動伺服器
 app.listen(PORT, () => {
