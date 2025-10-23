@@ -173,41 +173,23 @@ app.post("/api/chat", async (req, res) => {
 });
 
 // 執行程式碼 API: /api/execute
-app.post('/api/execute', async (req, res) => {
+app.post('/api/execute', (req, res) => {
   const { code } = req.body;
   if (!code) {
     return res.status(400).json({ error: "沒有提供程式碼" });
   }
-
-  try {
-    // 取得 Vercel 環境變數中的部署 URL
-    // 這確保我們總是能呼叫到正確的內部 API
-    const vercelUrl = process.env.VERCEL_URL;
-    const pythonApiUrl = `https://${vercelUrl}/api/execute_python`;
-    
-    // 使用 fetch 去呼叫我們剛剛建立的 Python API
-    const response = await fetch(pythonApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code: code }), // 將程式碼傳給 Python 服務
-    });
-
-    if (!response.ok) {
-        // 如果 Python 服務回傳錯誤狀態碼，例如 400 或 500
-        throw new Error(`Python API 服務出錯，狀態碼: ${response.status}`);
-    }
-
-    const pythonResult = await response.json();
-    
-    // 將從 Python 服務收到的結果，直接回傳給前端
-    res.json(pythonResult);
-
-  } catch (err) {
-    console.error("呼叫 Python API 時出錯:", err);
-    res.status(500).json({ error: '伺服器在與 Python 執行服務溝通時發生錯誤。' });
-  }
+  const pythonProcess = spawn('python3', ['-u', '-c', code]);
+  let output = '';
+  let error = '';
+  pythonProcess.stdout.on('data', (data) => { output += data.toString(); });
+  pythonProcess.stderr.on('data', (data) => { error += data.toString(); });
+  pythonProcess.on('close', () => {
+    res.json({ output, error });
+  });
+  pythonProcess.on('error', (err) => {
+     console.error("執行 Python 時出錯:", err);
+    res.status(500).json({ error: '伺服器無法執行 Python 程式碼。' });
+  });
 });
 
 // 儲存對話紀錄 API
@@ -260,4 +242,3 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行`);
 });
-
