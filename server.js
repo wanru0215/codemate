@@ -1,12 +1,17 @@
 // 1. 引入需要的模組
-require('dotenv').config(); // 載入 .env 檔案中的環境變數
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
-const { spawn } = require('child_process'); // 用於執行外部程式
+const { spawn } = require('child_process');
 const path = require("path");
-const fetch = require("node-fetch"); 
+const fetch = require("node-fetch");
+
+// --- 🔽 [新增] 為了整合 socket.io，我們需要 http 和 Server 模組 ---
+const http = require('http');
+const { Server } = require("socket.io");
+// --- 🔼 [新增] ---------------------------------------------
 
 // 2. 初始化 Express 應用
 const app = express();
@@ -16,9 +21,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// --- 核心修改點：前端靜態檔案 ---
-// 將靜態檔案的目錄指向 'public' 資料夾
-// Express 會自動在此資料夾中尋找 index.html 作為根路徑的回應
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- 資料庫連線 ---
@@ -29,216 +31,292 @@ mongoose.connect(mongoURI)
   .catch(err => console.error('無法連接到 MongoDB:', err));
 
 // --- Mongoose Schema & Model ---
+// (您的 Student 和 LearningRecord schema... 保持不變)
 const studentSchema = new mongoose.Schema({
   studentId: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  password: { type: String, required: true },
-  registrationTime: { type: Date, default: Date.now },
-  lastLoginTime: { type: Date }
+  name: { type: String, required: true },
+  password: { type: String, required: true },
+  registrationTime: { type: Date, default: Date.now },
+  lastLoginTime: { type: Date }
 });
 const Student = mongoose.model('Student', studentSchema, 'Students');
 
 const messageSchema = new mongoose.Schema({
-  id: { type: Number, required: true },
-  sender: { type: String, required: true },
-  content: { type: String, required: true },
-  timestamp: { type: Date, required: true }
+  id: { type: Number, required: true },
+  sender: { type: String, required: true },
+  content: { type: String, required: true },
+  timestamp: { type: Date, required: true }
 }, { _id: false });
 
 const learningRecordSchema = new mongoose.Schema({
-  studentId: { type: String, required: true, index: true },
-  conversation: [messageSchema],
-  lastUpdated: { type: Date, default: Date.now }
+  studentId: { type: String, required: true, index: true },
+  conversation: [messageSchema],
+  lastUpdated: { type: Date, default: Date.now }
 });
 const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
 
+
 // --- API 路由 (Routes) ---
 
-// 註冊 API: /api/register
+// 註冊 API: /api/register (保持不變)
 app.post('/api/register', async (req, res) => {
-  try {
-    const { studentId, name, password } = req.body;
-    if (!studentId || !name || !password) {
-      return res.status(400).json({ message: '所有欄位均為必填' });
-    }
-    const existingStudent = await Student.findOne({ studentId });
-    if (existingStudent) {
-      return res.status(409).json({ message: '此學號已被註冊' });
-    }
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    const newStudent = new Student({ studentId, name, password: hashedPassword });
-    await newStudent.save();
-    res.status(201).json({ message: '註冊成功' });
-  } catch (error) {
-    console.error('註冊錯誤:', error);
-    res.status(500).json({ message: '伺服器內部錯誤' });
-  }
+  try {
+    const { studentId, name, password } = req.body;
+    if (!studentId || !name || !password) {
+      return res.status(400).json({ message: '所有欄位均為必填' });
+    }
+    const existingStudent = await Student.findOne({ studentId });
+    if (existingStudent) {
+      return res.status(409).json({ message: '此學號已被註冊' });
+    }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    const newStudent = new Student({ studentId, name, password: hashedPassword });
+    await newStudent.save();
+    res.status(201).json({ message: '註冊成功' });
+  } catch (error) {
+    console.error('註冊錯誤:', error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
 });
 
-// 登入 API: /api/login
+// 登入 API: /api/login (保持不變)
 app.post('/api/login', async (req, res) => {
-  try {
-    const { studentId, password } = req.body;
-    if (!studentId || !password) {
-      return res.status(400).json({ message: '學號和密碼為必填' });
-    }
-    const student = await Student.findOne({ studentId });
-    if (!student) {
-      return res.status(401).json({ message: '學號或密碼錯誤' });
-    }
-    const isMatch = await bcrypt.compare(password, student.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: '學號或密碼錯誤' });
-    }
-    student.lastLoginTime = new Date();
-    await student.save();
-    res.status(200).json({ message: '登入成功', name: student.name });
-  } catch (error) {
-    console.error('登入錯誤:', error);
-    res.status(500).json({ message: '伺服器內部錯誤' });
-  }
+  try {
+    const { studentId, password } = req.body;
+    if (!studentId || !password) {
+      return res.status(400).json({ message: '學號和密碼為必填' });
+    }
+    const student = await Student.findOne({ studentId });
+    if (!student) {
+      return res.status(401).json({ message: '學號或密碼錯誤' });
+    }
+    const isMatch = await bcrypt.compare(password, student.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: '學號或密碼錯誤' });
+    }
+    student.lastLoginTime = new Date();
+    await student.save();
+    res.status(200).json({ message: '登入成功', name: student.name });
+  } catch (error) {
+    console.error('登入錯誤:', error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
 });
 
-// Gemini API 代理 (個人化版本)
+// Gemini API 代理 (保持不變)
 app.post("/api/chat", async (req, res) => {
-  console.log("1. [API Chat] 收到前端個人化請求...");
+  console.log("1. [API Chat] 收到前端個人化請求...");
 
-  try {
-    const { contents, systemInstruction, studentId } = req.body;
+  try {
+    const { contents, systemInstruction, studentId } = req.body;
 
-    if (!studentId || !contents) {
-        return res.status(400).json({ error: { message: "請求中缺少 studentId 或 contents" } });
-    }
+    if (!studentId || !contents) {
+        return res.status(400).json({ error: { message: "請求中缺少 studentId 或 contents" } });
+    }
 
-    // --- 步驟 1: 從 MongoDB 讀取歷史對話作為風格範例 ---
-    const record = await LearningRecord.findOne({ studentId });
-    const fullHistory = record?.conversation || [];
-    const fewShotExamples = [];
-    if (fullHistory.length > 1) {
-        console.log(`2. [API Chat] 找到學生 ${studentId} 的歷史紀錄，正在準備風格範例...`);
-        let pairsFound = 0;
-        // 從後往前找，最多找 2 對完整的 (AI -> User) -> (User -> AI) 對話
-        for (let i = fullHistory.length - 1; i > 0 && pairsFound < 2; i--) {
-            // 我們要找 user 提問，且前面是 ai 回答的組合
-            if (fullHistory[i].sender === 'user' && fullHistory[i-1].sender === 'ai') {
-                fewShotExamples.unshift({ role: 'model', parts: [{ text: fullHistory[i-1].content }] });
-                fewShotExamples.unshift({ role: 'user', parts: [{ text: fullHistory[i].content }] });
-                pairsFound++;
-            }
-        }
-    }
+    // --- 步驟 1: 從 MongoDB 讀取歷史對話作為風格範例 ---
+    const record = await LearningRecord.findOne({ studentId });
+    const fullHistory = record?.conversation || [];
+    const fewShotExamples = [];
+    if (fullHistory.length > 1) {
+        console.log(`2. [API Chat] 找到學生 ${studentId} 的歷史紀錄，正在準備風格範例...`);
+        let pairsFound = 0;
+        for (let i = fullHistory.length - 1; i > 0 && pairsFound < 2; i--) {
+            if (fullHistory[i].sender === 'user' && fullHistory[i-1].sender === 'ai') {
+                fewShotExamples.unshift({ role: 'model', parts: [{ text: fullHistory[i-1].content }] });
+                fewShotExamples.unshift({ role: 'user', parts: [{ text: fullHistory[i].content }] });
+                pairsFound++;
+            }
+        }
+    }
 
-    // --- 步驟 2: 組合最終的提示 (Prompt) ---
-    const finalContents = [
-        ...fewShotExamples,
-        ...contents
-    ];
-    
-    const finalPayload = {
-        contents: finalContents,
-        systemInstruction: systemInstruction
-    };
+    // --- 步驟 2: 組合最終的提示 (Prompt) ---
+    const finalContents = [
+        ...fewShotExamples,
+        ...contents
+    ];
+    
+    const finalPayload = {
+        contents: finalContents,
+        systemInstruction: systemInstruction
+    };
 
-    // --- 步驟 3: 呼叫 Gemini API ---
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
-    }
-    const modelName = "gemini-2.5-flash";
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    // --- 步驟 3: 呼叫 Gemini API ---
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
+    }
+    const modelName = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
-    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
+    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
 
-    const geminiResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(finalPayload),
-    });
-    
-    const data = await geminiResponse.json();
+    const geminiResponse = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(finalPayload),
+    });
+    
+    const data = await geminiResponse.json();
 
-    if (!geminiResponse.ok) {
-        console.error("4. [API Chat] Gemini API 錯誤:", JSON.stringify(data, null, 2));
-        return res.status(geminiResponse.status).json(data);
-    }
-    
-    console.log("5. [API Chat] 收到 Gemini 回應，準備回傳前端。");
-    res.json(data);
+    if (!geminiResponse.ok) {
+        console.error("4. [API Chat] Gemini API 錯誤:", JSON.stringify(data, null, 2));
+        return res.status(geminiResponse.status).json(data);
+    }
+    
+    console.log("5. [API Chat] 收到 Gemini 回應，準備回傳前端。");
+    res.json(data);
 
-  } catch (err) {
-    console.error("6. [API Chat] 代理請求過程中發生嚴重錯誤:", err);
-    res.status(500).json({ error: { message: "伺服器內部錯誤，無法呼叫 Gemini API" } });
-  }
+  } catch (err) {
+    console.error("6. [API Chat] 代理請求過程中發生嚴重錯誤:", err);
+    res.status(500).json({ error: { message: "伺服器內部錯誤，無法呼叫 Gemini API" } });
+  }
 });
 
-// 執行程式碼 API: /api/execute
+// --- 🔽 [移除] 舊的 /api/execute 路由 ---
+/*
+* 我們不再需要這個一次性的 HTTP 路由，
+* 下方的 WebSocket 邏輯將會完全取代它。
+*
 app.post('/api/execute', (req, res) => {
-  const { code } = req.body;
-  if (!code) {
-    return res.status(400).json({ error: "沒有提供程式碼" });
-  }
-  const pythonProcess = spawn('python3', ['-u', '-c', code]);
-  let output = '';
-  let error = '';
-  pythonProcess.stdout.on('data', (data) => { output += data.toString(); });
-  pythonProcess.stderr.on('data', (data) => { error += data.toString(); });
-  pythonProcess.on('close', () => {
-    res.json({ output, error });
-  });
-  pythonProcess.on('error', (err) => {
-     console.error("執行 Python 時出錯:", err);
-    res.status(500).json({ error: '伺服器無法執行 Python 程式碼。' });
-  });
+  const { code } = req.body;
+  // ... 舊的 spawn 邏輯 ...
 });
+*/
+// --- 🔼 [移除] ---------------------------
 
-// 儲存對話紀錄 API
+
+// 儲存對話紀錄 API (保持不變)
 app.post('/api/log/conversation', async (req, res) => {
-  try {
-    const { studentId, conversation } = req.body;
-    if (!studentId) {
-      return res.status(400).json({ message: "儲存失敗：請求中缺少學生 ID" });
-    }
-    if (!conversation || !Array.isArray(conversation)) {
-      return res.status(400).json({ message: "儲存失敗：對話內容格式不正確" });
-    }
-    await LearningRecord.findOneAndUpdate(
-      { studentId: studentId },
-      { $set: { conversation, lastUpdated: new Date() } },
-      { upsert: true, new: true }
-    );
-    res.status(200).json({ message: "對話紀錄已成功儲存" });
-  } catch (error) {
-    console.error("儲存對話紀錄時發生錯誤:", error);
-    res.status(500).json({ message: "伺服器內部錯誤" });
-  }
+  try {
+    const { studentId, conversation } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ message: "儲存失敗：請求中缺少學生 ID" });
+    }
+    if (!conversation || !Array.isArray(conversation)) {
+      return res.status(400).json({ message: "儲存失敗：對話內容格式不正確" });
+    }
+    await LearningRecord.findOneAndUpdate(
+      { studentId: studentId },
+      { $set: { conversation, lastUpdated: new Date() } },
+      { upsert: true, new: true }
+    );
+    res.status(200).json({ message: "對話紀錄已成功儲存" });
+  } catch (error) {
+    console.error("儲存對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤" });
+  }
 });
 
-// 取得對話紀錄 API
+// 取得對話紀錄 API (保持不變)
 app.get('/api/log/conversation/:studentId', async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    if (!studentId) {
-      return res.status(400).json({ message: '缺少學生 ID' });
-    }
-    const record = await LearningRecord.findOne(
-        { studentId },
-        { conversation: { $slice: -50 } }
-    );
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+    const record = await LearningRecord.findOne(
+        { studentId },
+        { conversation: { $slice: -50 } }
+    );
 
-    if (record && record.conversation) {
-      res.status(200).json(record.conversation);
-    } else {
-      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
-    }
-  } catch (error) {
-    console.error("讀取對話紀錄時發生錯誤:", error);
-    res.status(500).json({ message: '伺服器內部錯誤' });
-  }
+    if (record && record.conversation) {
+      res.status(200).json(record.conversation);
+    } else {
+      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
+    }
+  } catch (error) {
+    console.error("讀取對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
 });
 
 
-// 4. 啟動伺服器
-app.listen(PORT, () => {
-  console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行`);
+// --- 🔽 [修改] 伺服器啟動方式 ---
+// 1. 我們使用 Node 原生的 'http' 模組來建立伺服器，並傳入 Express app
+const server = http.createServer(app);
+
+// 2. 將 socket.io 附加到這個 http 伺服器上
+const io = new Server(server, {
+  cors: {
+    origin: "*", // 允許所有來源，在生產環境中您可能需要將其限制為您的前端網址
+    methods: ["GET", "POST"]
+  }
+});
+// --- 🔼 [修改] --------------------
+
+
+// --- 🔽 [新增] WebSocket 互動式終端機邏輯 ---
+
+io.on('connection', (socket) => {
+  console.log(`[Socket.IO] 一位使用者已連線: ${socket.id}`);
+  
+  let pythonProcess = null; // 在這個連線的範圍內儲存 Python 子進程
+
+  // 1. 監聽來自前端的 'run_code' 事件
+  socket.on('run_code', (code) => {
+    console.log(`[Socket.IO] 收到 'run_code' 事件，執行程式碼: ${code.substring(0, 20)}...`);
+
+    // 如果已有一個進程在運行，先結束它
+    if (pythonProcess) {
+      pythonProcess.kill('SIGKILL');
+    }
+
+    // 啟動新的 Python 子進程
+    // -u (unbuffered) 參數至關重要，它能確保輸出 (print) 和輸入 (input) 提示立即被發送
+    pythonProcess = spawn('python3', ['-u', '-c', code]);
+
+    // 2. 將 Python 的標準輸出 (stdout) 轉發給前端
+    pythonProcess.stdout.on('data', (data) => {
+      // 'terminal_output' 是我們自訂的事件名稱，前端需要監聽它
+      socket.emit('terminal_output', data.toString());
+    });
+
+    // 3. 將 Python 的標準錯誤 (stderr) 也轉發給前端
+    pythonProcess.stderr.on('data', (data) => {
+      // 我們也使用 'terminal_output' 來發送錯誤，這樣前端才能在同一個終端機畫面上顯示
+      socket.emit('terminal_output', data.toString());
+    });
+
+    // 4. 監聽 Python 程式的結束事件
+    pythonProcess.on('close', (code) => {
+      socket.emit('terminal_exit', `程式執行完畢，退出代碼: ${code}`);
+      pythonProcess = null; // 清理進程
+    });
+
+    // 5. 監聽 Python 啟動失敗的錯誤
+    pythonProcess.on('error', (err) => {
+      console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
+      socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
+      pythonProcess = null;
+    });
+  });
+
+  // 6. 監聽來自前端的 'terminal_input' 事件 (用於 input())
+  socket.on('terminal_input', (data) => {
+    if (pythonProcess && pythonProcess.stdin) {
+      // 將前端傳來的資料寫入 Python 的標準輸入 (stdin)
+      // 我們需要手動加上換行符，模擬按下 Enter 鍵
+      pythonProcess.stdin.write(data + '\n');
+    }
+  });
+
+  // 7. 監聽連線中斷事件
+  socket.on('disconnect', () => {
+    console.log(`[Socket.IO] 使用者已離線: ${socket.id}`);
+    // 如果使用者關閉了瀏覽器，我們必須手動結束還在運行的 Python 程式
+    if (pythonProcess) {
+      pythonProcess.kill('SIGKILL');
+      console.log('[Python Process] 因連線中斷，已強制結束子進程。');
+    }
+  });
+});
+
+// --- 🔼 [新增] ---------------------------------------------
+
+
+// 4. 啟動伺服器 (修改為啟動 'server' 而不是 'app')
+server.listen(PORT, () => {
+  console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行 (已啟用 WebSocket)`);
 });
