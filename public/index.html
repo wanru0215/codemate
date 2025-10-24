@@ -14,6 +14,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js" defer></script>
@@ -48,6 +49,8 @@
             margin-bottom: 0.5rem;
             font-size: 0.875rem;
             line-height: 1.5;
+            white-space: pre-wrap; /* 讓輸出可以換行 */
+            word-wrap: break-word; /* 避免長字串溢出 */
         }
 
         /* --- 新增 split.js 拖拉分界線的樣式 --- */
@@ -82,6 +85,26 @@
           margin-top: 0;
           margin-bottom: 0.5rem;
         }
+        .CodeMirror {
+             height: 100%;
+             font-size: 14px; /* 與 textarea 統一字體大小 */
+             line-height: 1.5;
+        }
+        /* --- 新增終端機輸入框樣式 --- */
+        .terminal-input {
+            background-color: #1e293b; /* slate-800 */
+            color: #e2e8f0; /* slate-200 */
+            border: 1px solid #334155; /* slate-700 */
+            border-radius: 0.375rem; /* rounded-md */
+            padding: 0.5rem 1rem;
+            font-family: monospace;
+            width: 100%;
+        }
+        .terminal-input:focus {
+            outline: none;
+            border-color: #14b8a6; /* teal-500 */
+            box-shadow: 0 0 0 1px #14b8a6;
+        }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-300 font-sans">
@@ -89,7 +112,7 @@
 <div id="root"></div>
 
 <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useCallback } = React;
     const { createRoot } = ReactDOM;
     
     marked.setOptions({
@@ -120,39 +143,70 @@
       const cmInstance = React.useRef(null);
 
       React.useEffect(() => {
-        if (editorRef.current && !cmInstance.current) {
-          cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
-            mode: "python",
-            theme: "dracula",
-            lineNumbers: true,
-            indentUnit: 4,
-            tabSize: 4,
-          });
+            if (editorRef.current && !cmInstance.current) {
+                cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
+                    mode: "python",
+                    theme: "dracula",
+                    lineNumbers: true,
+                    indentUnit: 4,
+                    tabSize: 4,
+                });
 
-          // 同步變化
-          cmInstance.current.on("change", (cm) => {
-            handleTabContentChange(activeTab.id, cm.getValue());
-          });
-        }
+                // 同步變化
+                cmInstance.current.on("change", (cm) => {
+                    // 確保 activeTab 存在才呼叫
+                    if(activeTab) {
+                        handleTabContentChange(activeTab.id, cm.getValue());
+                    }
+                });
+                 // 添加鍵盤事件監聽
+                 cmInstance.current.on("keydown", (cm, event) => {
+                     if (activeTab) {
+                         handleCodeKeyDown(event, activeTab.id);
+                     }
+                 });
+            }
 
-        // 每次切換 tab 時更新內容
-        if (cmInstance.current && activeTab.content !== cmInstance.current.getValue()) {
-          cmInstance.current.setValue(activeTab.content);
-        }
-      }, [activeTab]);
+            // 每次切換 tab 時更新內容
+            if (cmInstance.current && activeTab && activeTab.content !== cmInstance.current.getValue()) {
+                // 保存目前游標位置
+                const cursor = cmInstance.current.getCursor();
+                cmInstance.current.setValue(activeTab.content);
+                // 嘗試恢復游標位置 (如果行數還存在)
+                try {
+                    cmInstance.current.setCursor(cursor);
+                } catch (e) {
+                    // 如果舊游標位置無效，移到文件末尾
+                     cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
+                }
+                 // 確保編輯器獲得焦點
+                 setTimeout(() => cmInstance.current.focus(), 0);
+            } else if (cmInstance.current && !activeTab) {
+                 // 如果沒有 activeTab，清空編輯器
+                 cmInstance.current.setValue('');
+            }
+
+            // 組件卸載時清理 CodeMirror 實例
+            return () => {
+                if (cmInstance.current) {
+                    cmInstance.current.toTextArea(); // 恢復成 textarea
+                    cmInstance.current = null;
+                }
+            };
+        }, [activeTab]); // 依賴 activeTab 來觸發更新
 
       return (
-        <textarea
-          ref={editorRef}
-          onKeyDown={(e) => handleCodeKeyDown(e, activeTab.id)}
-          placeholder="# 在此編寫您的 Python 程式碼..."
-          className="code-textarea flex-1 w-full h-full"
-        />
-      );
+            // 我們仍然需要 textarea 作為 CodeMirror 的基礎
+            <textarea ref={editorRef} style={{ display: 'none' }} />
+        );
     }
 
 
     const App = () => {
+      const [socket, setSocket] = useState(null);
+      const terminalInputRef = useRef(null); // Ref for terminal input
+      const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
+
       const [isLoginView, setIsLoginView] = useState(true);
       const [studentId, setStudentId] = useState('');
       const [studentName, setStudentName] = useState('');
@@ -526,6 +580,89 @@
           }
       }, [tabs, activeTabId, currentModule, studentId]); // chatMessages is REMOVED from dependency array
 
+      // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
+      useEffect(() => {
+          // 只在登入後且在學習頁面時建立連線
+          if (isLoggedIn && page === 'learning') {
+              // 使用 window.location.origin 來自動獲取伺服器位址 (Render 會處理好)
+              const newSocket = io(window.location.origin, {
+                  // 您可以加入其他選項，例如 transports: ['websocket']
+              });
+              setSocket(newSocket);
+              console.log("[Socket.IO] 正在嘗試連線...");
+
+              newSocket.on('connect', () => {
+                  console.log(`[Socket.IO] 連線成功: ${newSocket.id}`);
+                  showMessageModal('已連接到執行服務。');
+              });
+
+              newSocket.on('disconnect', () => {
+                  console.log('[Socket.IO] 連線中斷');
+                  setSocket(null); // 清理 socket 狀態
+                  // 如果有程式碼正在執行，可能需要更新 UI 狀態
+                  setIsExecuting(false);
+                    setTabs(prevTabs => prevTabs.map(t => t.output === '執行中...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
+                  showMessageModal('與執行服務連線中斷。');
+              });
+
+              newSocket.on('connect_error', (err) => {
+                    console.error('[Socket.IO] 連線錯誤:', err);
+                    showMessageModal(`無法連接執行服務: ${err.message}`);
+                });
+
+              // 監聽來自後端的輸出
+              newSocket.on('terminal_output', (data) => {
+                  setTabs(prevTabs => {
+                      return prevTabs.map(t => {
+                          if (t.id === activeTabId && t.type === 'code') {
+                              // 將新收到的 data 附加到現有的 output 後面
+                              // 如果之前是 '執行中...', 就替換掉
+                              const currentOutput = t.output === '執行中...' ? '' : t.output;
+                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
+                          }
+                          return t;
+                      });
+                  });
+              });
+
+              // 監聽程式結束事件
+              newSocket.on('terminal_exit', (message) => {
+                  setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          const currentOutput = t.output === '執行中...' ? '' : t.output;
+                            return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
+                        }
+                        return t;
+                  }));
+                  setIsExecuting(false); // 標記為執行結束
+              });
+
+              // 監聽後端產生的錯誤 (例如 Python 啟動失敗)
+              newSocket.on('terminal_error', (errorMessage) => {
+                    setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          return { ...t, output: '', error: errorMessage };
+                        }
+                        return t;
+                    }));
+                    setIsExecuting(false); // 標記為執行結束
+                });
+
+
+              // 清理函數：當組件卸載或依賴項變化時斷開連線
+              return () => {
+                  console.log('[Socket.IO] 清理連線...');
+                  newSocket.disconnect();
+              };
+          } else if (socket) {
+                // 如果登出或離開學習頁面，斷開連線
+                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
+                socket.disconnect();
+                setSocket(null);
+          }
+      }, [isLoggedIn, page, activeTabId]); // 加入 activeTabId 確保監聽器能更新正確的 tab
+      // --- 🔼 [新增] --------------------------
+
       const showMessageModal = (msg) => {
         setMessage(msg);
         setShowMessage(true);
@@ -617,67 +754,35 @@
       };
       
       const handleCodeKeyDown = (event, tabId) => {
-        const textarea = event.target;
-        const { selectionStart, selectionEnd, value } = textarea;
+        // 移除 Shift+Enter 執行程式碼的邏輯，改由按鈕觸發
+        // if (key === 'Enter' && event.shiftKey) { ... } 這段移除
+
+        // ... (Tab, 自動補全括號, 自動縮排等邏輯保持不變)
+        const textarea = event.target; // CodeMirror 傳入的是 event，不是 textarea
+        const cm = event.target?.CodeMirror; // 嘗試從 event 獲取 CodeMirror 實例
+        if (!cm) return; // 如果找不到 CodeMirror 實例，直接返回
+
+        const { line, ch } = cm.getCursor();
+        const value = cm.getValue();
         const key = event.key;
-        
-        if (key === 'Enter' && event.shiftKey) {
-            event.preventDefault();
-            handleRunCode(tabId);
-            return;
-        }
+
+        const selectionStartOffset = cm.indexFromPos({ line, ch }); // 將行列轉換為字元偏移量
 
         const pairs = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", };
 
         if (key === 'Tab') {
             event.preventDefault();
-            const indentation = '  ';
-            const newValue = 
-                value.substring(0, selectionStart) + 
-                indentation + 
-                value.substring(selectionEnd);
-            
-            handleTabContentChange(tabId, newValue);
-
-            setTimeout(() => {
-                textarea.selectionStart = textarea.selectionEnd = selectionStart + indentation.length;
-            }, 0);
+            cm.execCommand("indentMore"); // 使用 CodeMirror 內建縮排
         } else if (key in pairs) {
-            event.preventDefault();
-            const closing = pairs[key];
-            const newValue = value.substring(0, selectionStart) + key + closing + value.substring(selectionEnd);
-            handleTabContentChange(tabId, newValue);
-            setTimeout(() => {
-                textarea.selectionStart = textarea.selectionEnd = selectionStart + 1;
-            }, 0);
+            // CodeMirror 通常會自動處理括號補全，這裡可以簡化或移除
         } else if (key === 'Enter') {
             event.preventDefault();
-            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-            const currentLine = value.substring(lineStart, selectionStart);
-            const currentIndentationMatch = currentLine.match(/^\s*/);
-            let indentation = currentIndentationMatch ? currentIndentationMatch[0] : '';
-            if (currentLine.trim().endsWith(':')) {
-                indentation += '  ';
-            }
-            const newValue = value.substring(0, selectionStart) + '\n' + indentation + value.substring(selectionEnd);
-            handleTabContentChange(tabId, newValue);
-            setTimeout(() => {
-                textarea.selectionStart = textarea.selectionEnd = selectionStart + 1 + indentation.length;
-            }, 0);
-        } else if (key === 'Backspace' && selectionStart === selectionEnd) {
-            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-            const currentLine = value.substring(lineStart, selectionStart);
-            
-            if (currentLine.trim() === '' && currentLine.endsWith('  ')) {
-                event.preventDefault();
-                const newValue = value.substring(0, selectionStart - 2) + value.substring(selectionEnd);
-                handleTabContentChange(tabId, newValue);
-                setTimeout(() => {
-                    textarea.selectionStart = textarea.selectionEnd = selectionStart - 2;
-                }, 0);
-            }
+            cm.execCommand("newlineAndIndent"); // 使用 CodeMirror 內建換行與縮排
+        } else if (key === 'Backspace') {
+            // CodeMirror 會自動處理 Backspace 的縮排行為，這裡可能不需要
         }
       };
+      // --- 🔼 [修改] -----------------------------------------
 
       const handleSendChat = async () => {
         if (!chatInput.trim() || isAiResponding) return;
@@ -809,31 +914,37 @@
         setNextTabId(prev => prev + 1);
       };
 
-      const handleTabContentChange = (id, newContent) => {
-        setTabs(tabs.map(tab => tab.id === id ? { ...tab, content: newContent } : tab));
-      };
+      const handleTabContentChange = useCallback((id, newContent) => {
+        // 使用 useCallback 避免 CodeMirror 因為函數引用變化而重新渲染
+        setTabs(prevTabs => prevTabs.map(tab => tab.id === id ? { ...tab, content: newContent } : tab));
+      }, []); // 空依賴陣列表示此函數永不改變
       
-      const handleRunCode = async (tabId) => {
-        const tab = tabs.find(t => t.id === tabId);
-        if (!tab) return;
-        setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
-        try {
-            const response = await fetch('https://codemate-aezk.onrender.com/api/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: tab.content })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `伺服器錯誤: ${response.statusText}`);
-            }
-            const result = await response.json();
-            setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: result.output, error: result.error } : t));
-        } catch (err) {
-            console.error("程式碼執行錯誤:", err);
-            setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '', error: err.message } : t));
+      // --- 🔽 [修改] handleRunCode - 改用 WebSocket ---
+      const handleRunCode = (tabId) => {
+          const tab = tabs.find(t => t.id === tabId);
+          if (!tab || !socket || isExecuting) return; // 檢查 socket 是否存在且沒有程式在執行中
+
+          setIsExecuting(true); // 標記為正在執行
+          // 清空之前的輸出和錯誤，並顯示 "執行中..."
+          setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
+
+          // 使用 socket.emit 發送程式碼到後端
+          socket.emit('run_code', tab.content);
+
+          // 我們不再需要 try...catch 或 await fetch
+          // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
+      };
+      // --- 🔼 [修改] ----------------------------------
+
+      // --- 🔽 [新增] 處理終端機輸入 ---
+      const handleTerminalInput = (event) => {
+        if (event.key === 'Enter' && socket && isExecuting) { // 確保 socket 存在且有程式在運行
+            const input = event.target.value;
+            socket.emit('terminal_input', input); // 將輸入發送到後端
+            event.target.value = ''; // 清空輸入框
         }
       };
+      // --- 🔼 [新增] --------------------
       
       const handleRemoveTab = (id) => {
         const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
@@ -1007,46 +1118,65 @@
                         <button onClick={() => handleAddTab('note')} className="text-xs bg-amber-500/10 text-amber-300 px-3 py-1 rounded-full hover:bg-amber-500/20">+ Note</button>
                       </div>
                   </div>
-                  <div className="flex-1 p-2 overflow-y-auto">
+                  {/* Tab 內容區 */}
+                  <div className="flex-1 p-2 overflow-hidden flex flex-col"> {/* 改為 flex flex-col */}
                       {activeTab?.type === 'code' && (
                           <div className="h-full flex flex-col">
-                              <div className="flex-1 flex flex-col">
+                              {/* CodeMirror 編輯器 (保持高度為一半) */}
+                              <div className="flex-1 h-1/2 overflow-hidden">
                                   <CodeMirrorEditor
-                                    activeTab={activeTab}
-                                    handleTabContentChange={handleTabContentChange}
-                                    handleCodeKeyDown={handleCodeKeyDown}
+                                      activeTab={activeTab}
+                                      handleTabContentChange={handleTabContentChange}
+                                      handleCodeKeyDown={handleCodeKeyDown}
                                   />
                               </div>
-                              <div className="pt-2 flex flex-col gap-2">
-                                <div className="flex items-center gap-2">
-                                    <button 
-                                        onClick={() => handleRunCode(activeTab.id)} 
-                                        disabled={!activeTab || activeTab.output === '執行中...'}
-                                        className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500 self-start"
-                                    >
-                                        {activeTab.output === '執行中...' ? '執行中...' : '執行'}
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDownloadTabContent(activeTab)}
-                                        className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm self-start"
-                                    >
-                                        下載檔案
-                                    </button>
-                                </div>
-                                <div className="flex-1 text-sm space-y-2">
-                                  {activeTab.output && activeTab.output !== '執行中...' && (
-                                    <div>
-                                        <strong className="text-slate-300">輸出:</strong>
-                                        <pre className="rounded !p-4 !font-mono !text-sm"><code className="language-python">{activeTab.output}</code></pre>
-                                    </div>
-                                  )}
-                                  {activeTab.error && (
-                                    <div>
-                                        <strong className="text-red-400">錯誤:</strong>
-                                        <pre className="rounded !p-4 !font-mono !text-sm bg-red-900/50 text-red-300 whitespace-pre-wrap">{activeTab.error}</pre>
-                                    </div>
-                                  )}
-                                </div>
+                                {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
+                              <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
+                                  {/* 執行/下載按鈕 */}
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                      <button
+                                          onClick={() => handleRunCode(activeTab.id)}
+                                          disabled={!activeTab || isExecuting} // 使用 isExecuting 狀態
+                                          className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500 self-start"
+                                      >
+                                          {isExecuting ? '執行中...' : '執行'}
+                                      </button>
+                                      <button
+                                          onClick={() => handleDownloadTabContent(activeTab)}
+                                          className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm self-start"
+                                      >
+                                          下載檔案
+                                      </button>
+                                  </div>
+                                  {/* 輸出/錯誤顯示區 */}
+                                  <div className="flex-1 text-sm space-y-2">
+                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
+                                      {(activeTab.output || activeTab.error) && (
+                                          <div>
+                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+                                                  {activeTab.error ? '錯誤:' : '輸出:'}
+                                              </strong>
+                                              {/* 使用 pre 標籤顯示，保留換行和空格 */}
+                                              <pre className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}>
+                                                  <code>{activeTab.output || activeTab.error}</code>
+                                              </pre>
+                                          </div>
+                                      )}
+                                      {/* --- 🔼 [修改] -------------------- */}
+                                  </div>
+                                    {/* --- 🔽 [新增] 終端機輸入框 --- */}
+                                    {isExecuting && ( // 只在執行中顯示輸入框
+                                      <div className="mt-auto pt-2 flex-shrink-0">
+                                          <input
+                                              ref={terminalInputRef}
+                                              type="text"
+                                              placeholder="在此輸入..."
+                                              onKeyDown={handleTerminalInput}
+                                              className="terminal-input"
+                                          />
+                                      </div>
+                                    )}
+                                    {/* --- 🔼 [新增] -------------------- */}
                               </div>
                           </div>
                       )}
