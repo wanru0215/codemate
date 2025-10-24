@@ -12,6 +12,8 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "mongoose": "^7.5.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "prismjs": "^1.30.0",
+    "socket.io": "^4.8.1"
   }
 }
