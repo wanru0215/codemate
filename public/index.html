@@ -203,7 +203,7 @@
         );
     }
     // --- 🔽 [新增] TerminalComponent ---
-    function TerminalComponent({ socket, isExecuting, activeTab, setTabs, activeTabId }) {
+    function TerminalComponent({ socket, isExecuting, activeTab, setIsExecuting }) {
         const terminalRef = useRef(null);
         const term = useRef(null); // 儲存 xterm 實例
         const fitAddon = useRef(null); // 儲存 FitAddon 實例
@@ -247,9 +247,12 @@
 
                 // --- 將使用者輸入導向 Socket.IO ---
                 term.current.onData(data => {
+                    console.log("[xterm] onData triggered. isExecuting:", isExecuting, "socket:", !!socket); // 新增偵錯
                     if (socket && isExecuting) {
-                        // console.log("[xterm] Sending input:", data);
+                        console.log("[xterm] Sending input:", data); // 新增偵錯
                         socket.emit('terminal_input', data);
+                    } else {
+                        console.log("[xterm] Input ignored."); // 新增偵錯
                     }
                 });
 
@@ -286,17 +289,21 @@
         useEffect(() => {
             if (socket && term.current) {
                 const handleOutput = (data) => {
-                    // console.log("[xterm] Received output:", data);
+                    console.log("[Socket.IO] Received terminal_output. Current isExecuting:", isExecuting); // 新增偵錯
                     term.current?.write(data);
                     term.current?.focus();
                 };
                 const handleExit = (message) => {
+                    console.log("[Socket.IO] Received terminal_exit. Setting isExecuting to false."); // 新增偵錯
                     term.current?.writeln(`\r\n\x1b[33m--- ${message} ---\x1b[0m`); // 使用 ANSI escape code 顯示黃色
                     term.current?.focus();
+                    setIsExecuting(false); // <--- 從 App component 傳入 setIsExecuting
                 };
                  const handleError = (errorMessage) => {
-                     term.current?.writeln(`\r\n\x1b[31mError: ${errorMessage}\x1b[0m`); // 使用 ANSI escape code 顯示紅色
-                     term.current?.focus();
+                    console.log("[Socket.IO] Received terminal_error. Setting isExecuting to false."); // 新增偵錯
+                    term.current?.writeln(`\r\n\x1b[31mError: ${errorMessage}\x1b[0m`); // 使用 ANSI escape code 顯示紅色
+                    term.current?.focus();
+                    setIsExecuting(false); // <--- 從 App component 傳入 setIsExecuting
                  };
 
                 socket.on('terminal_output', handleOutput);
@@ -310,21 +317,29 @@
                     socket.off('terminal_error', handleError);
                 };
             }
-        }, [socket]); // 依賴 socket
+        }, [socket, isExecuting, setIsExecuting]); // 依賴 socket
 
          // 當 activeTab 或其 output/error 變化時，更新 terminal 內容
          useEffect(() => {
+             console.log("[TerminalComponent] useEffect for activeTab/isExecuting triggered. isExecuting:", isExecuting); // 新增偵錯
              if (term.current && activeTab) {
-                 if (activeTab.output === '執行中...') {
-                     term.current.clear(); // 清空終端機
-                     term.current.writeln("\x1b[36mExecuting code...\x1b[0m"); // 顯示藍綠色提示
-                     term.current.focus(); // 聚焦到終端機
+                 if (isExecuting && activeTab.output === '執行中...') {
+                     // 只有在剛開始執行時清屏
+                     if(!term.current.getOption('disableStdin')) { // 檢查是否是第一次執行
+                         term.current.clear();
+                         term.current.writeln("\x1b[36mExecuting code...\x1b[0m");
+                         term.current.setOption('disableStdin', true); // 標記為已開始執行
+                     }
+                     term.current.focus();
+                 } else if (!isExecuting) {
+                     term.current.setOption('disableStdin', false); // 程式結束，允許下次清屏
+                     // 如果需要保留上次執行結果，可以在這裡不做 clear()
                  }
              } else if (term.current && !activeTab) {
-                  // 沒有 activeTab 時清空
                   term.current.clear();
+                  term.current.setOption('disableStdin', false);
              }
-         }, [activeTab?.id, activeTab?.output, activeTab?.error, isExecuting]); // 依賴 activeTab 的 id 和 output/error
+         }, [activeTab?.id, isExecuting, activeTab?.output]); // 移除 activeTab.error 依賴
 
 
         return <div ref={terminalRef} className="terminal-container"></div>;
@@ -1004,8 +1019,11 @@
       // --- 🔽 [修改] handleRunCode - 改用 WebSocket ---
       const handleRunCode = (tabId) => {
           const tab = tabs.find(t => t.id === tabId);
-          if (!tab || !socket || isExecuting) return; // 檢查 socket 是否存在且沒有程式在執行中
-
+          if (!tab || !socket || isExecuting) {
+            console.log("Run cancelled. Tab:", !!tab, "Socket:", !!socket, "Executing:", isExecuting); // 新增偵錯
+            return; // 檢查 socket 是否存在且沒有程式在執行中
+          }
+          console.log("[handleRunCode] Setting isExecuting to true"); // 新增偵錯
           setIsExecuting(true); // 標記為正在執行
           // 清空之前的輸出和錯誤，並顯示 "執行中..."
           setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
@@ -1225,8 +1243,7 @@
                                           socket={socket}
                                           isExecuting={isExecuting}
                                           activeTab={activeTab}
-                                            setTabs={setTabs} // 傳遞 setTabs 以便更新狀態 (雖然 xterm 內部處理了)
-                                            activeTabId={activeTabId} // 傳遞 activeTabId
+                                          setIsExecuting={setIsExecuting} // <-- 傳遞 setIsExecuting
                                       />
                                   </div>
                               </div>
