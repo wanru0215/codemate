@@ -321,25 +321,21 @@
 
          // 當 activeTab 或其 output/error 變化時，更新 terminal 內容
          useEffect(() => {
-             console.log("[TerminalComponent] useEffect for activeTab/isExecuting triggered. isExecuting:", isExecuting); // 新增偵錯
-             if (term.current && activeTab) {
-                 if (isExecuting && activeTab.output === '執行中...') {
-                     // 只有在剛開始執行時清屏
-                     if(!term.current.getOption('disableStdin')) { // 檢查是否是第一次執行
-                         term.current.clear();
-                         term.current.writeln("\x1b[36mExecuting code...\x1b[0m");
-                         term.current.setOption('disableStdin', true); // 標記為已開始執行
-                     }
+             console.log("[TerminalComponent] Effect for isExecuting triggered. isExecuting:", isExecuting, "prevIsExecuting:", prevIsExecuting.current);
+             if (term.current) {
+                 // --- Corrected Logic ---
+                 // If execution just started (changed from false to true)
+                 if (isExecuting && !prevIsExecuting.current) {
+                     console.log("[TerminalComponent] Clearing terminal and writing 'Executing...'");
+                     term.current.clear();
+                     term.current.writeln("\x1b[36mExecuting code...\x1b[0m"); // Cyan color
                      term.current.focus();
-                 } else if (!isExecuting) {
-                     term.current.setOption('disableStdin', false); // 程式結束，允許下次清屏
-                     // 如果需要保留上次執行結果，可以在這裡不做 clear()
                  }
-             } else if (term.current && !activeTab) {
-                  term.current.clear();
-                  term.current.setOption('disableStdin', false);
+                 // --- Removed incorrect setOption calls ---
              }
-         }, [activeTab?.id, isExecuting, activeTab?.output]); // 移除 activeTab.error 依賴
+             // Update the previous value ref *after* the check
+             prevIsExecuting.current = isExecuting;
+         }, [isExecuting, activeTab?.id]); // Depend on isExecuting and activeTab?.id to re-run when execution starts for a specific tab
 
 
         return <div ref={terminalRef} className="terminal-container"></div>;
@@ -1020,9 +1016,7 @@
       const handleRunCode = (tabId) => {
           const tab = tabs.find(t => t.id === tabId);
           if (!tab || !socket || isExecuting) {
-            console.log("Run cancelled. Tab:", !!tab, "Socket:", !!socket, "Executing:", isExecuting); // 新增偵錯
-            return; // 檢查 socket 是否存在且沒有程式在執行中
-          }
+            console.log("Run cancelled. Tab:", !!tab, "Socket:", !!socket, "Executing:", isExecuting); return;}
           console.log("[handleRunCode] Setting isExecuting to true"); // 新增偵錯
           setIsExecuting(true); // 標記為正在執行
           // 清空之前的輸出和錯誤，並顯示 "執行中..."
