@@ -267,17 +267,20 @@
                  if (terminalRef.current.parentElement) {
                       resizeObserver.observe(terminalRef.current.parentElement);
                  }
-
+                 const terminalElement = terminalRef.current; // 保存引用
+                 const focusTerminal = () => term.current?.focus();
+                 terminalElement.addEventListener('click', focusTerminal);
 
                  // 清理函數
                  return () => {
                      console.log("[xterm] Disposing terminal");
-                      resizeObserver.disconnect();
+                     resizeObserver.disconnect();
+                     terminalElement.removeEventListener('click', focusTerminal);
                      term.current?.dispose();
                      term.current = null;
                  };
             }
-        }, [socket]); // 依賴 socket 來確保初始化時 socket 存在
+        }, []); // 依賴 socket 來確保初始化時 socket 存在
 
         // 監聽 Socket.IO 事件並寫入 Terminal
         useEffect(() => {
@@ -285,12 +288,15 @@
                 const handleOutput = (data) => {
                     // console.log("[xterm] Received output:", data);
                     term.current?.write(data);
+                    term.current?.focus();
                 };
                 const handleExit = (message) => {
                     term.current?.writeln(`\r\n\x1b[33m--- ${message} ---\x1b[0m`); // 使用 ANSI escape code 顯示黃色
+                    term.current?.focus();
                 };
                  const handleError = (errorMessage) => {
                      term.current?.writeln(`\r\n\x1b[31mError: ${errorMessage}\x1b[0m`); // 使用 ANSI escape code 顯示紅色
+                     term.current?.focus();
                  };
 
                 socket.on('terminal_output', handleOutput);
@@ -313,16 +319,6 @@
                      term.current.clear(); // 清空終端機
                      term.current.writeln("\x1b[36mExecuting code...\x1b[0m"); // 顯示藍綠色提示
                      term.current.focus(); // 聚焦到終端機
-                 } else if (activeTab.error) {
-                     // 錯誤由 socket listener 處理，這裡不需要重複寫入
-                 } else if (activeTab.output) {
-                    // 如果不是執行中，但有 output，這可能是從 localStorage 載入的
-                    // 或者是非執行中的 tab 切換回來，暫時不清空，讓使用者看到上次結果
-                    // term.current.clear();
-                    // term.current.write(activeTab.output);
-                 } else {
-                      // 如果 output 和 error 都為空（例如新 Tab 或已清除）
-                      term.current.clear();
                  }
              } else if (term.current && !activeTab) {
                   // 沒有 activeTab 時清空
@@ -742,13 +738,9 @@
               // 清理函數：當組件卸載或依賴項變化時斷開連線
               return () => {
                   console.log('[Socket.IO] 清理連線...');
-                  newSocket.disconnect();
+                  newSocket?.disconnect(); // Use optional chaining
+                  setSocket(null); // Ensure socket state is cleared
               };
-          } else if (socket) {
-                // 如果登出或離開學習頁面，斷開連線
-                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
-                socket.disconnect();
-                setSocket(null);
           }
       }, [isLoggedIn, page]); // 加入 activeTabId 確保監聽器能更新正確的 tab
       // --- 🔼 [新增] --------------------------
