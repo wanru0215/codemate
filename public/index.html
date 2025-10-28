@@ -15,10 +15,6 @@
     <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js" defer></script>
@@ -94,18 +90,24 @@
              font-size: 14px; /* 與 textarea 統一字體大小 */
              line-height: 1.5;
         }
-        .terminal-container {
+        /* --- 新增終端機輸入框樣式 --- */
+        .terminal-input {
+            background-color: #0f172a; /* slate-900 - 與輸出區背景一致 */
+            color: #e2e8f0; /* slate-200 */
+            border: none; /* 移除邊框 */
+            /* border-bottom: 1px solid #334155; /* slate-700 - 只留底線? (可選) */
+            border-radius: 0; /* 移除圓角 */
+            padding: 0.5rem 1rem;
+            font-family: monospace;
             width: 100%;
-            height: 100%; /* 讓容器填滿空間 */
-            background-color: #0f172a; /* slate-900 */
-            padding: 0.5rem; /* 給一點內邊距 */
-            overflow: hidden; /* 確保 xterm 不會溢出 */
+            box-shadow: none; /* 移除陰影 */
         }
-        /* xterm 本身會處理滾動條 */
-        .xterm .xterm-viewport {
-             /* 覆蓋 xterm 預設的滾動條樣式 (可選) */
-            scrollbar-width: thin;
-            scrollbar-color: #475569 #1e293b; /* slate-600 slate-800 */
+        .terminal-input:focus {
+            outline: none; /* 移除外框線 */
+            border-color: transparent; /* 聚焦時邊框透明 */
+            box-shadow: none; /* 移除聚焦陰影 */
+            /* 您可以考慮只在聚焦時顯示底線 */
+            /* border-bottom: 1px solid #14b8a6; /* teal-500 */
         }
     </style>
 </head>
@@ -202,151 +204,14 @@
             <textarea ref={editorRef} style={{ display: 'none' }} />
         );
     }
-    // --- 🔽 [新增] TerminalComponent ---
-    function TerminalComponent({ socket, isExecuting, activeTab, setIsExecuting }) {
-        const terminalRef = useRef(null);
-        const term = useRef(null); // 儲存 xterm 實例
-        const fitAddon = useRef(null); // 儲存 FitAddon 實例
-
-        // 初始化 Terminal
-        useEffect(() => {
-            if (terminalRef.current && !term.current) {
-                console.log("[xterm] Initializing terminal");
-                term.current = new window.Terminal({
-                    cursorBlink: true,
-                    convertEol: true, // 自動轉換換行符
-                    fontFamily: 'monospace',
-                    fontSize: 14,
-                    theme: { // Dracula theme colors (approximate)
-                        background: '#0f172a', // slate-900
-                        foreground: '#f8f8f2',
-                        cursor: '#f8f8f2',
-                        selectionBackground: '#44475a',
-                        black: '#000000',
-                        red: '#ff5555',
-                        green: '#50fa7b',
-                        yellow: '#f1fa8c',
-                        blue: '#bd93f9',
-                        magenta: '#ff79c6',
-                        cyan: '#8be9fd',
-                        white: '#bfbfbf',
-                        brightBlack: '#4d4d4d',
-                        brightRed: '#ff6e67',
-                        brightGreen: '#5af78e',
-                        brightYellow: '#f4f99d',
-                        brightBlue: '#caa9fa',
-                        brightMagenta: '#ff92d0',
-                        brightCyan: '#9aedfe',
-                        brightWhite: '#e6e6e6'
-                    }
-                });
-                fitAddon.current = new window.FitAddon.FitAddon();
-                term.current.loadAddon(fitAddon.current);
-                term.current.open(terminalRef.current);
-                fitAddon.current.fit(); // 初始調整大小
-
-                // --- 將使用者輸入導向 Socket.IO ---
-                term.current.onData(data => {
-                    console.log("[xterm] onData triggered. isExecuting:", isExecuting, "socket:", !!socket); // 新增偵錯
-                    if (socket && isExecuting) {
-                        console.log("[xterm] Sending input:", data); // 新增偵錯
-                        socket.emit('terminal_input', data);
-                    } else {
-                        console.log("[xterm] Input ignored."); // 新增偵錯
-                    }
-                });
-
-                 // 監聽 resize 事件，自動調整 xterm 大小
-                 const resizeObserver = new ResizeObserver(() => {
-                     if (fitAddon.current && term.current.element) {
-                         try {
-                              fitAddon.current.fit();
-                         } catch (e) {
-                             console.warn("[xterm] Fit addon resize error:", e);
-                         }
-                     }
-                 });
-                 // 觀察 terminal 容器的大小變化
-                 if (terminalRef.current.parentElement) {
-                      resizeObserver.observe(terminalRef.current.parentElement);
-                 }
-                 const terminalElement = terminalRef.current; // 保存引用
-                 const focusTerminal = () => term.current?.focus();
-                 terminalElement.addEventListener('click', focusTerminal);
-
-                 // 清理函數
-                 return () => {
-                     console.log("[xterm] Disposing terminal");
-                     resizeObserver.disconnect();
-                     terminalElement.removeEventListener('click', focusTerminal);
-                     term.current?.dispose();
-                     term.current = null;
-                 };
-            }
-        }, []); // 依賴 socket 來確保初始化時 socket 存在
-
-        // 監聽 Socket.IO 事件並寫入 Terminal
-        useEffect(() => {
-            if (socket && term.current) {
-                const handleOutput = (data) => {
-                    console.log("[Socket.IO] Received terminal_output. Current isExecuting:", isExecuting); // 新增偵錯
-                    term.current?.write(data);
-                    term.current?.focus();
-                };
-                const handleExit = (message) => {
-                    console.log("[Socket.IO] Received terminal_exit. Setting isExecuting to false."); // 新增偵錯
-                    term.current?.writeln(`\r\n\x1b[33m--- ${message} ---\x1b[0m`); // 使用 ANSI escape code 顯示黃色
-                    term.current?.focus();
-                    setIsExecuting(false); // <--- 從 App component 傳入 setIsExecuting
-                };
-                 const handleError = (errorMessage) => {
-                    console.log("[Socket.IO] Received terminal_error. Setting isExecuting to false."); // 新增偵錯
-                    term.current?.writeln(`\r\n\x1b[31mError: ${errorMessage}\x1b[0m`); // 使用 ANSI escape code 顯示紅色
-                    term.current?.focus();
-                    setIsExecuting(false); // <--- 從 App component 傳入 setIsExecuting
-                 };
-
-                socket.on('terminal_output', handleOutput);
-                socket.on('terminal_exit', handleExit);
-                socket.on('terminal_error', handleError);
-
-                // 清理舊的監聽器
-                return () => {
-                    socket.off('terminal_output', handleOutput);
-                    socket.off('terminal_exit', handleExit);
-                    socket.off('terminal_error', handleError);
-                };
-            }
-        }, [socket, isExecuting, setIsExecuting]); // 依賴 socket
-
-         // 當 activeTab 或其 output/error 變化時，更新 terminal 內容
-         useEffect(() => {
-             console.log("[TerminalComponent] Effect for isExecuting triggered. isExecuting:", isExecuting, "prevIsExecuting:", prevIsExecuting.current);
-             if (term.current) {
-                 // --- Corrected Logic ---
-                 // If execution just started (changed from false to true)
-                 if (isExecuting && !prevIsExecuting.current) {
-                     console.log("[TerminalComponent] Clearing terminal and writing 'Executing...'");
-                     term.current.clear();
-                     term.current.writeln("\x1b[36mExecuting code...\x1b[0m"); // Cyan color
-                     term.current.focus();
-                 }
-                 // --- Removed incorrect setOption calls ---
-             }
-             // Update the previous value ref *after* the check
-             prevIsExecuting.current = isExecuting;
-         }, [isExecuting, activeTab?.id]); // Depend on isExecuting and activeTab?.id to re-run when execution starts for a specific tab
-
-
-        return <div ref={terminalRef} className="terminal-container"></div>;
-    }
-    // --- 🔼 [新增] --------------------------
 
 
     const App = () => {
       const [socket, setSocket] = useState(null);
+      const terminalInputRef = useRef(null); // Ref for terminal input
       const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
-      
+      const [isWaitingForInput, setIsWaitingForInput] = useState(false);
+
       const [isLoginView, setIsLoginView] = useState(true);
       const [studentId, setStudentId] = useState('');
       const [studentName, setStudentName] = useState('');
@@ -724,7 +589,10 @@
       useEffect(() => {
           // 只在登入後且在學習頁面時建立連線
           if (isLoggedIn && page === 'learning') {
-              const newSocket = io(window.location.origin, { transports: ['websocket'] });
+              // 使用 window.location.origin 來自動獲取伺服器位址 (Render 會處理好)
+              const newSocket = io(window.location.origin, {
+                  // 您可以加入其他選項，例如 transports: ['websocket']
+              });
               setSocket(newSocket);
               console.log("[Socket.IO] 正在嘗試連線...");
 
@@ -738,6 +606,7 @@
                   setSocket(null); // 清理 socket 狀態
                   // 如果有程式碼正在執行，可能需要更新 UI 狀態
                   setIsExecuting(false);
+                    setTabs(prevTabs => prevTabs.map(t => t.output === '執行中...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
                   showMessageModal('與執行服務連線中斷。');
               });
 
@@ -746,16 +615,74 @@
                     showMessageModal(`無法連接執行服務: ${err.message}`);
                 });
 
+              // 監聽來自後端的輸出
+              newSocket.on('terminal_output', (data) => {
+                  // --- 🔽 [修改] 偵測是否需要輸入 ---
+                  let shouldWaitForInput = false;
+                  // 簡單的偵測邏輯：如果輸出結尾是 ': ' 且沒有換行，可能是在等待輸入
+                  if (data.trim().endsWith(':')) {
+                        shouldWaitForInput = true;
+                  }
+                  setIsWaitingForInput(shouldWaitForInput); // 設定等待狀態
+                  // --- 🔼 [修改] --------------------
+                  setTabs(prevTabs => {
+                      return prevTabs.map(t => {
+                          if (t.id === activeTabId && t.type === 'code') {
+                              // 將新收到的 data 附加到現有的 output 後面
+                              // 如果之前是 '執行中...', 就替換掉
+                              const currentOutput = t.output === '執行中...' ? '' : t.output;
+                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
+                          }
+                          return t;
+                      });
+                  });
+              });
+
+              // 監聽程式結束事件
+              newSocket.on('terminal_exit', (message) => {
+                  setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          const currentOutput = t.output === '執行中...' ? '' : t.output;
+                            return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
+                        }
+                        return t;
+                  }));
+                  setIsExecuting(false); // 標記為執行結束
+              });
+
+              // 監聽後端產生的錯誤 (例如 Python 啟動失敗)
+              newSocket.on('terminal_error', (errorMessage) => {
+                    setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          return { ...t, output: '', error: errorMessage };
+                        }
+                        return t;
+                    }));
+                    setIsExecuting(false); // 標記為執行結束
+                });
+
+
               // 清理函數：當組件卸載或依賴項變化時斷開連線
               return () => {
                   console.log('[Socket.IO] 清理連線...');
-                  newSocket?.disconnect(); // Use optional chaining
-                  setSocket(null); // Ensure socket state is cleared
+                  newSocket.disconnect();
               };
+          } else if (socket) {
+                // 如果登出或離開學習頁面，斷開連線
+                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
+                socket.disconnect();
+                setSocket(null);
           }
-      }, [isLoggedIn, page]); // 加入 activeTabId 確保監聽器能更新正確的 tab
+      }, [isLoggedIn, page, activeTabId]); // 加入 activeTabId 確保監聽器能更新正確的 tab
       // --- 🔼 [新增] --------------------------
-      
+      // --- 🔽 [新增] 自動聚焦效果 ---
+      useEffect(() => {
+          if (isWaitingForInput && terminalInputRef.current) {
+              terminalInputRef.current.focus();
+          }
+      }, [isWaitingForInput]); // 當 isWaitingForInput 變化時觸發
+      // --- 🔼 [新增] ------------------
+
       const showMessageModal = (msg) => {
         setMessage(msg);
         setShowMessage(true);
@@ -1015,9 +942,8 @@
       // --- 🔽 [修改] handleRunCode - 改用 WebSocket ---
       const handleRunCode = (tabId) => {
           const tab = tabs.find(t => t.id === tabId);
-          if (!tab || !socket || isExecuting) {
-            console.log("Run cancelled. Tab:", !!tab, "Socket:", !!socket, "Executing:", isExecuting); return;}
-          console.log("[handleRunCode] Setting isExecuting to true"); // 新增偵錯
+          if (!tab || !socket || isExecuting) return; // 檢查 socket 是否存在且沒有程式在執行中
+
           setIsExecuting(true); // 標記為正在執行
           // 清空之前的輸出和錯誤，並顯示 "執行中..."
           setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
@@ -1029,6 +955,16 @@
           // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
       };
       // --- 🔼 [修改] ----------------------------------
+
+      // --- 🔽 [新增] 處理終端機輸入 ---
+      const handleTerminalInput = (event) => {
+        if (event.key === 'Enter' && socket && isExecuting) { // 確保 socket 存在且有程式在運行
+            const input = event.target.value;
+            socket.emit('terminal_input', input); // 將輸入發送到後端
+            event.target.value = ''; // 清空輸入框
+        }
+      };
+      // --- 🔼 [新增] --------------------
       
       const handleRemoveTab = (id) => {
         const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
@@ -1215,7 +1151,7 @@
                                   />
                               </div>
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
-                              <div className="h-1/2 flex flex-col pt-2 gap-2"> {/* 新增 overflow-y-auto */}
+                              <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
                                   <div className="flex items-center gap-2 flex-shrink-0">
                                       <button
@@ -1232,14 +1168,35 @@
                                           下載檔案
                                       </button>
                                   </div>
-                                  <div className="flex-1 overflow-hidden"> {/* 容器需要 overflow: hidden */}
-                                      <TerminalComponent
-                                          socket={socket}
-                                          isExecuting={isExecuting}
-                                          activeTab={activeTab}
-                                          setIsExecuting={setIsExecuting} // <-- 傳遞 setIsExecuting
-                                      />
+                                  {/* 輸出/錯誤顯示區 */}
+                                  <div className="flex-1 text-sm space-y-2">
+                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
+                                      {(activeTab.output || activeTab.error) && (
+                                          <div>
+                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+                                                  {activeTab.error ? '錯誤:' : '輸出:'}
+                                              </strong>
+                                              {/* 使用 pre 標籤顯示，保留換行和空格 */}
+                                              <pre className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}>
+                                                  <code>{activeTab.output || activeTab.error}</code>
+                                              </pre>
+                                          </div>
+                                      )}
+                                      {/* --- 🔼 [修改] -------------------- */}
                                   </div>
+                                    {/* --- 🔽 [新增] 終端機輸入框 --- */}
+                                    {isExecuting && ( // 只在執行中顯示輸入框
+                                      <div className="mt-auto pt-2 flex-shrink-0">
+                                          <input
+                                              ref={terminalInputRef}
+                                              type="text"
+                                              onKeyDown={handleTerminalInput}
+                                              className="terminal-input"
+                                              disabled={!isWaitingForInput} // (可選，如果希望只有在明確等待時才能輸入)
+                                          />
+                                      </div>
+                                    )}
+                                    {/* --- 🔼 [新增] -------------------- */}
                               </div>
                           </div>
                       )}
