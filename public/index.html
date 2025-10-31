@@ -821,105 +821,102 @@
 
       useEffect(() => {
         const loadData = async () => {
+          // --- 🔽 [FIX] 從 localStorage 獲取 studentId ---
+          const currentStudentId = localStorage.getItem('studentId'); 
+          
+          if (!currentStudentId) {
+              console.error("loadData 錯誤：在 localStorage 中找不到 studentId。");
+              return;
+          }
+          // --- 🔼 [FIX] --------------------------------
+
+          // 1. 載入對話紀錄
           try {
-            const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${studentId}`);
+            const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${currentStudentId}`);
             if (!res.ok) throw new Error('無法從伺服器讀取對話紀錄');
             const conversation = await res.json();
             if (conversation && conversation.length > 0) {
               setChatMessages(conversation);
             } else {
-              setChatMessages([
-                { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }
-              ]);
+              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
             }
           } catch (error) {
             console.error("讀取對話紀錄失敗:", error);
-            setChatMessages([
-              { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }
-            ]);
+            setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
           }
 
-          // --- 🔽 從 DB 載入測驗進度 ---
+          // 2. 載入測驗進度
           try {
-            const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${studentId}`);
-            if (res.ok) {
-              const data = await res.json();
-              // data.progress 現在是 { studentId: "...", quizzes: { "1014": { ... } } }
-              setQuizProgress(data.progress.quizzes || {}); // 我們只關心 quizzes Map
-            } else {
-              console.error("無法從 DB 載入測驗進度");
-              setQuizProgress({});
-            }
+              const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${currentStudentId}`);
+              if (res.ok) {
+                  const data = await res.json();
+                  setQuizProgress(data.progress.quizzes || {}); 
+              } else {
+                  console.error("無法從 DB 載入測驗進度");
+                  setQuizProgress({});
+              }
           } catch (e) {
-            setQuizProgress({});
+              console.error("載入測驗進度 API 請求失敗:", e);
+              setQuizProgress({});
           }
-          // --- 🔼 -----------------------
 
+          // 3. 載入課程/分頁進度
           setCourses(mockCourses);
-          const savedProgressRaw = localStorage.getItem(`progress_${studentId}`);
+          const savedProgressRaw = localStorage.getItem(`progress_${currentStudentId}`); 
 
           if (savedProgressRaw) {
             try {
               const savedProgress = JSON.parse(savedProgressRaw);
               const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
-              if (!lastCourse) return;
-
+              if (!lastCourse) {
+                  return;
+              }
               const courseModules = mockModules[lastCourse.id] || [];
               const lastModuleId = savedProgress.lastModuleId;
               let lastModule = null;
               let parentModule = null;
 
               for (const module of courseModules) {
-                if (module.id === lastModuleId) {
-                  lastModule = module;
-                  break;
-                }
-                if (module.submodules) {
-                  const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
-                  if (foundSub) {
-                    lastModule = foundSub;
-                    parentModule = module;
-                    break;
+                  if (module.id === lastModuleId) { lastModule = module; break; }
+                  if (module.submodules) {
+                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
+                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
                   }
-                }
               }
 
               if (!lastModule && courseModules.length > 0) {
-                const firstModule = courseModules[0];
-                lastModule =
-                  firstModule.submodules && firstModule.submodules.length > 0
-                    ? firstModule.submodules[0]
-                    : firstModule;
-                if (firstModule.submodules) parentModule = firstModule;
+                  const firstModule = courseModules[0];
+                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
+                  if (firstModule.submodules) parentModule = firstModule;
               }
 
               setSelectedCourse(lastCourse);
+              setModules(courseModules);
               setCurrentModule(lastModule);
               if (parentModule) {
-                setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
+                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
               }
-
+              
               if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
-                setTabs(savedProgress.tabs);
-                setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
+                  setTabs(savedProgress.tabs);
+                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
               } else if (lastModule) {
-                handleModuleSelect(lastModule, true);
+                  handleModuleSelect(lastModule, true);
               }
             } catch (error) {
               console.error("讀取進度失敗，將重設為預設值:", error);
-              localStorage.removeItem(`progress_${studentId}`);
+              localStorage.removeItem(`progress_${currentStudentId}`);
               if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
             }
           } else {
             if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
           }
-        };
+        }; // <-- loadData 函數結束
 
         if (page === 'learning' && isLoggedIn && studentId) {
           loadData();
         }
       }, [page, isLoggedIn, studentId]);
-
 
       useEffect(() => {
           if (page === 'learning' && isLoggedIn && currentModule && studentId) {
