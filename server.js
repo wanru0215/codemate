@@ -27,7 +27,8 @@ mongoose.connect(mongoURI)
   .catch(err => console.error('無法連接到 MongoDB:', err));
 
 // --- Mongoose Schema & Model ---
-// (您的 Student 和 LearningRecord schema... 保持不變)
+
+// 學生帳號 Schema (保持不變)
 const studentSchema = new mongoose.Schema({
   studentId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
@@ -37,13 +38,13 @@ const studentSchema = new mongoose.Schema({
 });
 const Student = mongoose.model('Student', studentSchema, 'Students');
 
+// 對話紀錄 Schema (保持不變)
 const messageSchema = new mongoose.Schema({
   id: { type: Number, required: true },
   sender: { type: String, required: true },
   content: { type: String, required: true },
   timestamp: { type: Date, required: true }
 }, { _id: false });
-
 const learningRecordSchema = new mongoose.Schema({
   studentId: { type: String, required: true, index: true },
   conversation: [messageSchema],
@@ -51,84 +52,51 @@ const learningRecordSchema = new mongoose.Schema({
 });
 const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
 
-// 單次作答紀錄的子 Schema
-// [新 API] 提交「單一」測驗答案
-// (請用這整段程式碼替換您 server.js 中的舊版本)
-app.post('/api/progress/quiz/attempt', async (req, res) => {
-  try {
-    const { studentId, quizId, questionId, answer, isCorrect } = req.body;
-    
-    if (!studentId || !quizId || !questionId || !answer || isCorrect === undefined) {
-      return res.status(400).json({ message: "缺少必要的提交欄位" });
-    }
+// 扁平化的測驗紀錄 Schema (保持不變)
+const quizAttemptSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, index: true },
+  quizId: { type: String, required: true, index: true },
+  questionId: { type: String, required: true },
+  answer: { type: String, required: true },
+  isCorrect: { type: Boolean, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+const QuizAttempt = mongoose.model('QuizAttempt', quizAttemptSchema, 'QuizAttempts');
 
-    // 1. 找到 (或建立) 該學生的學習進度文件
-    let progressDoc = await LearningProgress.findOne({ studentId: studentId });
-    if (!progressDoc) {
-      // --- [FIX 1] ---
-      // 不使用 new Map()，Mongoose Schema 會自動將 {} 轉換為 Map
-      progressDoc = new LearningProgress({ studentId: studentId, quizzes: {} }); 
-    }
-
-    // 2. 獲取 'quizzes' Map
-    const quizzesMap = progressDoc.quizzes;
-    let quizProgress = quizzesMap.get(quizId);
-
-    if (!quizProgress) {
-      // --- [FIX 2] ---
-      // 建立一個普通的 JS 物件，而不是 new Map()
-      quizProgress = { 
-        quizId: quizId, 
-        lastAttempted: new Date(),
-        questions: {} // 'questions' 也初始化為普通物件
+// 後端輔助函數 (保持不變)
+const reconstructProgress = (allAttempts) => {
+  const quizzes = {}; 
+  for (const attempt of allAttempts) {
+    const { quizId, questionId, isCorrect, timestamp, answer } = attempt;
+    if (!quizzes[quizId]) {
+      quizzes[quizId] = {
+        quizId: quizId,
+        lastAttempted: new Date(0), 
+        questions: {} 
       };
     }
-
-    // 3. 獲取 'questions' Map (從 quizProgress 物件)
-    // Mongoose 會自動將 { questions: {} } 轉換為 Map
-    const questionsMap = quizProgress.questions;
-    let questionProgress = questionsMap.get(questionId);
-    
-    if (!questionProgress) {
-      // --- [FIX 3] ---
-      // 建立一個普通的 JS 物件
-      questionProgress = { 
-        questionId: questionId, 
-        attempts: [], 
-        correctCount: 0, 
-        incorrectCount: 0 
+    if (!quizzes[quizId].questions[questionId]) {
+      quizzes[quizId].questions[questionId] = {
+        questionId: questionId,
+        correctCount: 0,
+        incorrectCount: 0,
+        attempts: []
       };
     }
-
-    // 4. 更新這些普通的 JS 物件
-    const newAttempt = { answer, isCorrect, timestamp: new Date() };
-    questionProgress.attempts.push(newAttempt);
-
+    const quizProgress = quizzes[quizId];
+    const questionProgress = quizzes[quizId].questions[questionId];
+    questionProgress.attempts.push({ answer, isCorrect, timestamp });
     if (isCorrect) {
       questionProgress.correctCount += 1;
     } else {
       questionProgress.incorrectCount += 1;
     }
-    quizProgress.lastAttempted = new Date(); // 更新測驗的最後作答時間
-
-    // 5. [FIX 4] 將修改後的「普通物件」放回 Mongoose Map 中
-    // 這是觸發 Mongoose 變更的關鍵
-    questionsMap.set(questionId, questionProgress);
-    quizzesMap.set(quizId, quizProgress);
-
-    // [偵錯 Log] 保持這個 log，它至關重要
-    console.log(`[CodeMate 儲存中] 準備儲存 student ${studentId} 的資料:`, JSON.stringify(progressDoc.quizzes));
-
-    // 6. 儲存
-    await progressDoc.save();
-
-    res.status(201).json({ message: "作答紀錄已儲存", newProgress: progressDoc });
-
-  } catch (error) {
-    console.error("儲存測驗作答時發生錯誤:", error);
-    res.status(500).json({ message: "伺服器內部錯誤" });
+    if (timestamp > quizProgress.lastAttempted) {
+      quizProgress.lastAttempted = timestamp;
+    }
   }
-});
+  return quizzes; 
+};
 // --- API 路由 (Routes) ---
 
 // 註冊 API: /api/register (保持不變)
@@ -270,38 +238,25 @@ app.post('/api/log/conversation', async (req, res) => {
 });
 
 // 取得對話紀錄 API (保持不變)
-app.get('/api/log/conversation/:studentId', async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    if (!studentId) {
-      return res.status(400).json({ message: '缺少學生 ID' });
-    }
-    const record = await LearningRecord.findOne(
-        { studentId },
-        { conversation: { $slice: -50 } }
-    );
-
-    if (record && record.conversation) {
-      res.status(200).json(record.conversation);
-    } else {
-      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
-    }
-  } catch (error) {
-    console.error("讀取對話紀錄時發生錯誤:", error);
-    res.status(500).json({ message: '伺服器內部錯誤' });
-  }
-});
-
-// [POST API] 提交「單一」測驗答案
 app.post('/api/progress/quiz/attempt', async (req, res) => {
   try {
     const { studentId, quizId, questionId, answer, isCorrect } = req.body;
     
-    if (!studentId || !quizId || !questionId || answer === undefined || isCorrect === undefined) {
-      return res.status(400).json({ message: "缺少必要的提交欄位" });
+    // --- [FIX] 更嚴格的檢查，防止 null 或 undefined ---
+    if (
+      !studentId || 
+      !quizId || 
+      !questionId || 
+      answer === null || answer === undefined || // <-- 檢查 null 和 undefined
+      isCorrect === null || isCorrect === undefined // <-- 檢查 null 和 undefined
+    ) {
+      console.error('[CodeMate 儲存失敗] 偵測到無效請求: 欄位為 null 或 undefined', req.body);
+      return res.status(400).json({ message: "缺少必要的提交欄位 (null/undefined)" });
     }
+    // --- [FIX] ----------------------------------
 
-    // 1. 建立一個新的「作答紀錄」文件
+    console.log(`[CodeMate 儲存中 1/4] 收到 student ${studentId} 的作答: quizId=${quizId}, qId=${questionId}, answer=${answer}, isCorrect=${isCorrect}`);
+
     const newAttempt = new QuizAttempt({
       studentId,
       quizId,
@@ -311,32 +266,39 @@ app.post('/api/progress/quiz/attempt', async (req, res) => {
       timestamp: new Date()
     });
 
-    // 2. 儲存這筆紀錄 (這一步 100% 可靠)
-    await newAttempt.save();
-    
-    // [偵錯 Log]
-    console.log(`[CodeMate 儲存成功] student ${studentId}, quiz ${quizId}, q ${questionId}, correct: ${isCorrect}`);
+    try {
+      await newAttempt.save();
+      console.log(`[CodeMate 儲存中 2/4] Mongoose .save() 成功!`);
+    } catch (saveError) {
+      // --- [FIX] 這就是我們需要看的錯誤！ ---
+      console.error(`[CodeMate 儲存中 2/4] Mongoose .save() 失敗!`, saveError);
+      // 將 Mongoose 的詳細錯誤回傳給前端，以便在瀏覽器 F12 中看到
+      return res.status(500).json({ message: "Mongoose .save() 失敗", error: saveError.message, fullError: saveError });
+    }
 
-    // 3. [重要] 為了讓前端 UI 即時更新，我們必須讀取「所有」紀錄並回傳
+    // 3. 讀取所有紀錄
     const allAttempts = await QuizAttempt.find({ studentId: studentId });
-    const reconstructedQuizzes = reconstructProgress(allAttempts);
+    console.log(`[CodeMate 儲存中 3/4] .find() 找到了 ${allAttempts.length} 筆紀錄`);
 
-    // 4. 回傳前端期望的格式
+    // 4. 重組資料
+    const reconstructedQuizzes = reconstructProgress(allAttempts);
+    console.log(`[CodeMate 儲存中 4/4] 重組後的資料: ${JSON.stringify(reconstructedQuizzes)}`);
+
     res.status(201).json({ 
       message: "作答紀錄已儲存", 
       newProgress: { 
-        quizzes: reconstructedQuizzes // 回傳重組後的物件
+        quizzes: reconstructedQuizzes
       } 
     });
 
   } catch (error) {
-    console.error("儲存測驗作答時發生錯誤:", error);
-    res.status(500).json({ message: "伺服器內部錯誤" });
+    console.error("儲存測驗作答的過程中發生了其他錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤", error: error.message });
   }
 });
 
 
-// [GET API] 取得「所有」測驗進度
+// [GET API] 取得「所有」測驗進度 (保持不變)
 app.get('/api/progress/quiz/:studentId', async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -344,19 +306,15 @@ app.get('/api/progress/quiz/:studentId', async (req, res) => {
       return res.status(400).json({ message: '缺少學生 ID' });
     }
 
-    // 1. 從新的 'QuizAttempts' collection 讀取該學生的所有紀錄
     const allAttempts = await QuizAttempt.find({ studentId: studentId });
     
-    // [偵錯 Log]
     console.log(`[CodeMate 讀取中] 找到 student ${studentId} 的 ${allAttempts.length} 筆作答紀錄`);
 
-    // 2. 呼叫輔助函數，將扁平資料重組為巢狀物件
     const reconstructedQuizzes = reconstructProgress(allAttempts);
 
-    // 3. 回傳前端期望的格式
     res.status(200).json({ 
       progress: { 
-        quizzes: reconstructedQuizzes // 回傳重組後的物件
+        quizzes: reconstructedQuizzes 
       } 
     }); 
 
@@ -365,14 +323,14 @@ app.get('/api/progress/quiz/:studentId', async (req, res) => {
     res.status(500).json({ message: '伺服器內部錯誤' });
   }
 });
+// --- 🔼 [FIX] ---------------------------------------------
 
-// 1. 我們使用 Node 原生的 'http' 模組來建立伺服器，並傳入 Express app
+
+// --- 伺服器啟動 (包含 Socket.IO) ---
 const server = http.createServer(app);
-
-// 2. 將 socket.io 附加到這個 http 伺服器上
 const io = new Server(server, {
   cors: {
-    origin: "*", // 允許所有來源，在生產環境中您可能需要將其限制為您的前端網址
+    origin: "*", 
     methods: ["GET", "POST"]
   }
 });
@@ -380,40 +338,25 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] 一位使用者已連線: ${socket.id}`);
   
-  let pythonProcess = null; // 在這個連線的範圍內儲存 Python 子進程
+  let pythonProcess = null; 
 
-  // 1. 監聽來自前端的 'run_code' 事件
   socket.on('run_code', (code) => {
-    console.log(`[Socket.IO] 收到 'run_code' 事件，執行程式碼: ${code.substring(0, 20)}...`);
-
-    // 如果已有一個進程在運行，先結束它
+    console.log(`[Socket.IO] 收到 'run_code' 事件`);
     if (pythonProcess) {
       pythonProcess.kill('SIGKILL');
     }
-
-    // 啟動新的 Python 子進程
-    // -u (unbuffered) 參數至關重要，它能確保輸出 (print) 和輸入 (input) 提示立即被發送
     pythonProcess = spawn('python3', ['-u', '-c', code]);
 
-    // 2. 將 Python 的標準輸出 (stdout) 轉發給前端
     pythonProcess.stdout.on('data', (data) => {
-      // 'terminal_output' 是我們自訂的事件名稱，前端需要監聽它
       socket.emit('terminal_output', data.toString());
     });
-
-    // 3. 將 Python 的標準錯誤 (stderr) 也轉發給前端
     pythonProcess.stderr.on('data', (data) => {
-      // 我們也使用 'terminal_output' 來發送錯誤，這樣前端才能在同一個終端機畫面上顯示
       socket.emit('terminal_output', data.toString());
     });
-
-    // 4. 監聽 Python 程式的結束事件
     pythonProcess.on('close', (code) => {
       socket.emit('terminal_exit', `程式執行完畢，退出代碼: ${code}`);
-      pythonProcess = null; // 清理進程
+      pythonProcess = null; 
     });
-
-    // 5. 監聽 Python 啟動失敗的錯誤
     pythonProcess.on('error', (err) => {
       console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
       socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
@@ -421,19 +364,14 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 6. 監聽來自前端的 'terminal_input' 事件 (用於 input())
   socket.on('terminal_input', (data) => {
     if (pythonProcess && pythonProcess.stdin) {
-      // 將前端傳來的資料寫入 Python 的標準輸入 (stdin)
-      // 我們需要手動加上換行符，模擬按下 Enter 鍵
       pythonProcess.stdin.write(data + '\n');
     }
   });
 
-  // 7. 監聽連線中斷事件
   socket.on('disconnect', () => {
     console.log(`[Socket.IO] 使用者已離線: ${socket.id}`);
-    // 如果使用者關閉了瀏覽器，我們必須手動結束還在運行的 Python 程式
     if (pythonProcess) {
       pythonProcess.kill('SIGKILL');
       console.log('[Python Process] 因連線中斷，已強制結束子進程。');
@@ -441,7 +379,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// 4. 啟動伺服器 (修改為啟動 'server' 而不是 'app')
 server.listen(PORT, () => {
-  console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行 (已啟用 WebSocket)`);
+  console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行 (已啟用 WebSocket)`);
 });
