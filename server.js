@@ -188,7 +188,7 @@ app.post("/api/chat", async (req, res) => {
     if (!apiKey) {
       return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
     }
-    const modelName = "gemini-2.5-flash";
+    const modelName = "gemini-1.5-flash"; // (修正)
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
     console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
@@ -237,7 +237,33 @@ app.post('/api/log/conversation', async (req, res) => {
   }
 });
 
-// 取得對話紀錄 API (保持不變)
+// --- 🔽 [FIX] 這是您遺失的 API 路由！ ---
+// 取得對話紀錄 API
+app.get('/api/log/conversation/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+    const record = await LearningRecord.findOne(
+        { studentId },
+        { conversation: { $slice: -50 } } // 只取最後 50 筆
+    );
+
+    if (record && record.conversation) {
+      res.status(200).json(record.conversation);
+    } else {
+      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
+    }
+  } catch (error) {
+    console.error("讀取對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+// --- 🔼 [FIX] ---------------------------
+
+
+// [POST API] 提交「單一」測驗答案 (保持 v4 偵錯版本)
 app.post('/api/progress/quiz/attempt', async (req, res) => {
   try {
     const { studentId, quizId, questionId, answer, isCorrect } = req.body;
