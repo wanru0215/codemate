@@ -207,6 +207,10 @@
 
 
     const App = () => {
+      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
+      const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
+      const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
+      const [isQuizComplete, setIsQuizComplete] = useState(false); // 測驗是否已答完
       const [socket, setSocket] = useState(null);
       const terminalInputRef = useRef(null); // Ref for terminal input
       const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
@@ -239,6 +243,10 @@
       const [tabs, setTabs] = useState([]);
       const [activeTabId, setActiveTabId] = useState(null);
       const [nextTabId, setNextTabId] = useState(1);
+      const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+      const [currentQuiz, setCurrentQuiz] = useState(null); // 存放當前正在作答的測驗模組
+      const [quizAnswers, setQuizAnswers] = useState({}); // 存放使用者的答案 { q1: 'true', q2: 'Array (陣列)' }
+      const [quizProgress, setQuizProgress] = useState({}); // 存放所有測驗的進度 { 1014: { completed: true, errors: 0 } }
       
       // Mock Data
       const mockCourses = [
@@ -253,8 +261,32 @@
                 submodules: [
                     { id: 1011, title: "影片 1-1", type: 'video', content: "ch01-1", videoUrl: "https://drive.google.com/file/d/15qXDhuVvm_VJyJNI0uyySjEucgh-r7HT/preview" },
                     { id: 1012, title: "影片 1-2", type: 'video', content: "ch01-2", videoUrl: "https://drive.google.com/file/d/1e_es_9B7bCMsf27CnRuclm_RUELwSrS1/preview" },
-                    { id: 1013, title: "Ch1 PPT", type: 'ppt', content: "這是變數與資料型別的簡報。", pptUrl: "https://drive.google.com/file/d/1kuOHyantUs0sBOKw04TUG9pRvwEJq0zx/preview" }
-                    
+                    { id: 1013, title: "Ch1 PPT", type: 'ppt', content: "這是變數與資料型別的簡報。", pptUrl: "https://drive.google.com/file/d/1kuOHyantUs0sBOKw04TUG9pRvwEJq0zx/preview" },
+                    { id: 1014,
+                      title: "Ch1 隨堂測驗",
+                      type: 'quiz',
+                      content: "測驗您對 Python 基本觀念的理解。",
+                      questions: [
+                          {
+                              id: 'q1',
+                              type: 'true-false',
+                              text: 'Python 是一種編譯語言 (Compiled Language)。',
+                              answer: 'false'
+                          },
+                          {
+                              id: 'q2',
+                              type: 'multiple-choice',
+                              text: '以下哪個不是 Python 的基本資料型態？',
+                                options: [
+                                  'Integer (整數)',
+                                  'String (字串)',
+                                  'Boolean (布林值)',
+                                  'Array (陣列)'
+                              ],
+                              answer: 'Array (陣列)' // Python 內建的是 List
+                          }
+                      ]
+                    }  
                 ]
               },
               { 
@@ -508,12 +540,32 @@
             if (conversation && conversation.length > 0) {
               setChatMessages(conversation);
             } else {
-              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+              setChatMessages([
+                { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }
+              ]);
             }
           } catch (error) {
             console.error("讀取對話紀錄失敗:", error);
-            setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+            setChatMessages([
+              { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }
+            ]);
           }
+
+          // --- 🔽 從 DB 載入測驗進度 ---
+          try {
+            const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${studentId}`);
+            if (res.ok) {
+              const data = await res.json();
+              // data.progress 現在是 { studentId: "...", quizzes: { "1014": { ... } } }
+              setQuizProgress(data.progress.quizzes || {}); // 我們只關心 quizzes Map
+            } else {
+              console.error("無法從 DB 載入測驗進度");
+              setQuizProgress({});
+            }
+          } catch (e) {
+            setQuizProgress({});
+          }
+          // --- 🔼 -----------------------
 
           setCourses(mockCourses);
           const savedProgressRaw = localStorage.getItem(`progress_${studentId}`);
@@ -522,42 +574,49 @@
             try {
               const savedProgress = JSON.parse(savedProgressRaw);
               const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
-              if (!lastCourse) {
-                  return;
-              }
+              if (!lastCourse) return;
+
               const courseModules = mockModules[lastCourse.id] || [];
               const lastModuleId = savedProgress.lastModuleId;
               let lastModule = null;
               let parentModule = null;
 
               for (const module of courseModules) {
-                  if (module.id === lastModuleId) { lastModule = module; break; }
-                  if (module.submodules) {
-                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
-                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
+                if (module.id === lastModuleId) {
+                  lastModule = module;
+                  break;
+                }
+                if (module.submodules) {
+                  const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
+                  if (foundSub) {
+                    lastModule = foundSub;
+                    parentModule = module;
+                    break;
                   }
+                }
               }
 
               if (!lastModule && courseModules.length > 0) {
-                  const firstModule = courseModules[0];
-                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
-                  if (firstModule.submodules) parentModule = firstModule;
+                const firstModule = courseModules[0];
+                lastModule =
+                  firstModule.submodules && firstModule.submodules.length > 0
+                    ? firstModule.submodules[0]
+                    : firstModule;
+                if (firstModule.submodules) parentModule = firstModule;
               }
-              
+
               setSelectedCourse(lastCourse);
-              setModules(courseModules);
               setCurrentModule(lastModule);
               if (parentModule) {
-                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
+                setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
               }
-              
+
               if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
-                  setTabs(savedProgress.tabs);
-                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
-                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
+                setTabs(savedProgress.tabs);
+                setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
               } else if (lastModule) {
-                  handleModuleSelect(lastModule, true);
-              }              
+                handleModuleSelect(lastModule, true);
+              }
             } catch (error) {
               console.error("讀取進度失敗，將重設為預設值:", error);
               localStorage.removeItem(`progress_${studentId}`);
@@ -572,6 +631,7 @@
           loadData();
         }
       }, [page, isLoggedIn, studentId]);
+
 
       useEffect(() => {
           if (page === 'learning' && isLoggedIn && currentModule && studentId) {
@@ -956,15 +1016,30 @@
       };
       // --- 🔼 [修改] ----------------------------------
 
-      // --- 🔽 [新增] 處理終端機輸入 ---
-      const handleTerminalInput = (event) => {
-        if (event.key === 'Enter' && socket && isExecuting) { // 確保 socket 存在且有程式在運行
-            const input = event.target.value;
-            socket.emit('terminal_input', input); // 將輸入發送到後端
-            event.target.value = ''; // 清空輸入框
-        }
-      };
-      // --- 🔼 [新增] --------------------
+      // --- 🔽 [修改] 處理終端機輸入 (加入輸入回顯) ---
+      const handleTerminalInput = (event) => {
+        if (event.key === 'Enter' && socket && isExecuting) {
+            event.preventDefault(); // 避免預設行為
+            const input = event.target.value;
+            
+            // 1. 立刻將輸入內容回顯到 output 狀態
+            setTabs(prevTabs => prevTabs.map(t => {
+                if (t.id === activeTabId && t.type === 'code') {
+                    // 將輸入的文字和一個換行符附加到現有 output
+                    const currentOutput = t.output === '執行中...' ? '' : t.output;
+                    return { ...t, output: currentOutput + input + '\n' }; 
+                }
+                return t;
+            }));
+
+            // 2. 將輸入發送到後端
+            socket.emit('terminal_input', input); 
+            
+            // 3. 清空輸入框
+            event.target.value = ''; 
+        }
+      };
+      // --- 🔼 [修改] --------------------
       
       const handleRemoveTab = (id) => {
         const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
@@ -1016,7 +1091,205 @@
             document.body.removeChild(link);
         }
       };
+      // [新] 打開測驗時，重置所有狀態
+      const handleOpenQuiz = (quizModule) => {
+          setCurrentQuiz(quizModule);
+          setCurrentQuestionIndex(0); // 從第一題開始
+          setSelectedAnswer(null);
+          setCurrentFeedback(null);
+          setIsQuizComplete(false);
+          setIsQuizModalOpen(true);
+      };
 
+      // [新] 提交「當前」問題的答案
+      const handleSubmitAnswer = async () => {
+          if (!selectedAnswer || !currentQuiz) return;
+
+          const currentStudentId = localStorage.getItem('studentId');
+          const question = currentQuiz.questions[currentQuestionIndex];
+          const isCorrect = (selectedAnswer === question.answer);
+          // [FIX] 立即檢查是否為最後一題
+          const isLastQuestion = (currentQuestionIndex === currentQuiz.questions.length - 1); 
+
+          // 1. 顯示即時回饋
+          setCurrentFeedback(isCorrect ? "答對了！" : `答錯了，正確答案是: ${question.answer}`);
+
+          // 2. [FIX] 如果是最後一題，立即設定為完成狀態 (在 API 呼叫前)
+          // 這樣就不會短暫顯示 "下一題" 按鈕
+          if (isLastQuestion) {
+              setIsQuizComplete(true);
+          }
+
+          // 3. 準備 payload
+          const payload = {
+              studentId: currentStudentId,
+              quizId: currentQuiz.id.toString(),
+              questionId: question.id,
+              answer: selectedAnswer,
+              isCorrect: isCorrect
+          };
+
+          // 4. 呼叫後端 API 儲存這筆作答 (非同步執行)
+          try {
+              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz/attempt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+              });
+              if (!res.ok) throw new Error("儲存答案失敗");
+              
+              const data = await res.json();
+              setQuizProgress(data.newProgress.quizzes || quizProgress); 
+
+          } catch (error) {
+              console.error("儲存測驗 API 失敗:", error);
+              showMessageModal(`儲存作答紀錄失敗: ${error.message}`);
+          }
+      };
+
+      // [新] 換到下一題
+      const handleNextQuestion = () => {
+          // 重設狀態
+          setSelectedAnswer(null);
+          setCurrentFeedback(null); // <-- [FIX] 清除上一題的回饋
+          setCurrentQuestionIndex(prev => prev + 1);
+      };
+
+      // --- 🔽 [新增] 儲存測驗進度到資料庫 ---
+      const saveQuizProgressToDB = async (newProgress) => {
+          // 從 localStorage 獲取當前 studentId，在 helper 函數中這比依賴 state 更穩定
+          const currentStudentId = localStorage.getItem('studentId');
+          if (!currentStudentId) {
+              console.error("無法儲存測驗進度：找不到 studentId");
+              return;
+          }
+
+          try {
+              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      studentId: currentStudentId,
+                      progress: newProgress
+                  })
+              });
+              if (!res.ok) {
+                  console.error("儲存測驗進度到 DB 失敗");
+              }
+          } catch (error) {
+              console.error("儲存測驗進度 API 請求失敗:", error);
+          }
+      };
+      // --- 🔼 [新增] --------------------------
+
+      const renderQuizModal = () => {
+        if (!isQuizModalOpen || !currentQuiz) return null;
+
+        // 從 state 中取得當前題目
+        const question = currentQuiz.questions[currentQuestionIndex];
+        const totalQuestions = currentQuiz.questions.length;
+
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-700 text-white rounded-lg shadow-xl w-full max-w-lg min-h-[300px] flex flex-col">
+              <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-teal-400">{currentQuiz.title}</h3>
+                {!isQuizComplete && (
+                  <span className="text-sm text-slate-400">第 {currentQuestionIndex + 1} / {totalQuestions} 題</span>
+                )}
+              </div>
+
+              {/* --- 顯示題目或測驗完成 --- */}
+              <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                {isQuizComplete ? (
+                  // --- 測驗完成畫面 ---
+                  <div className="text-center py-10">
+                    <h4 className="text-2xl font-bold text-green-400 mb-4">測驗完成！</h4>
+                    <p className="text-slate-300">您已完成所有題目，可以關閉此視窗了。</p>
+                  </div>
+                ) : (
+                  // --- 顯示當前題目 ---
+                  question && (
+                    <div key={question.id} className="bg-slate-900 p-4 rounded-md">
+                      <p className="font-semibold mb-3 text-lg">{question.text}</p>
+                      <div className="space-y-2">
+                        {question.type === 'true-false' && (
+                          ['true', 'false'].map(value => (
+                            <label key={value} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === value ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
+                              <input type="radio" name={question.id} value={value} 
+                                checked={selectedAnswer === value}
+                                onChange={() => setSelectedAnswer(value)} 
+                                disabled={!!currentFeedback} // 答過就不能改
+                                className="form-radio text-teal-500 bg-slate-700 border-slate-600" />
+                              <span>{value === 'true' ? 'O (是)' : 'X (否)'}</span>
+                            </label>
+                          ))
+                        )}
+                        {question.type === 'multiple-choice' && question.options.map(option => (
+                          <label key={option} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === option ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
+                            <input type="radio" name={question.id} value={option} 
+                              checked={selectedAnswer === option}
+                              onChange={() => setSelectedAnswer(option)}
+                              disabled={!!currentFeedback} // 答過就不能改
+                              className="form-radio text-teal-500 bg-slate-700 border-slate-600" />
+                            <span>{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* --- 顯示回饋 --- */}
+              {currentFeedback && (
+                <div className={`p-4 text-center font-bold ${currentFeedback.startsWith('答對') ? 'text-green-400' : 'text-red-400'}`}>
+                  {currentFeedback}
+                </div>
+              )}
+              {/* --- 顯示按鈕 --- */}
+              <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
+                <button 
+                  onClick={() => setIsQuizModalOpen(false)}
+                  className="bg-slate-600 text-white py-2 px-4 rounded-lg hover:bg-slate-700"
+                >
+                  關閉
+                </button>
+
+                {/* --- 🔽 [修改] 動態按鈕邏輯 --- */}
+                {isQuizComplete ? (
+                  // 1. 測驗已完成 (setIsQuizComplete 為 true) -> 顯示 "重新作答"
+                  <button
+                      onClick={() => handleOpenQuiz(currentQuiz)}
+                      className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
+                  >
+                      重新作答
+                  </button>
+                ) : currentFeedback ? (
+                  // 2. 測驗未完成，但已提交答案 (正在顯示回饋)
+                  // (因為 `handleSubmitAnswer` 的修正, 這只會發生在 "非" 最後一題)
+                  <button 
+                      onClick={handleNextQuestion}
+                      className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700"
+                  >
+                      下一題
+                  </button>
+                ) : (
+                  // 3. 測驗未完成，且尚未提交答案 -> 顯示 "提交答案"
+                  <button
+                      onClick={handleSubmitAnswer}
+                      disabled={!selectedAnswer}
+                      className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 disabled:bg-slate-500"
+                  >
+                      提交答案
+                  </button>
+                )}
+                {/* --- 🔼 [修改] --- */}
+              </div>
+          </div>
+      </div>
+      );
+      };
       const renderAuthContent = () => {
         return (
           <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -1084,9 +1357,28 @@
             {/* 左側區塊 */}
             <div id="left-pane" className="flex flex-col gap-2">
                 {/* 教材區 */}
-                <div id="material-pane" className="flex flex-col overflow-hidden">
+                <div id="material-pane" className="flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-lg">
                     {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full rounded-lg" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
                     {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
+                    {currentModule?.type === 'quiz' && (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+                        <h2 className="text-2xl font-bold text-teal-400 mb-4">{currentModule.title}</h2>
+                        <p className="text-slate-300 mb-8">{currentModule.content}</p>
+                        <button 
+                          onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
+                          className="bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-700 transition-all"
+                        >
+                          {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
+                        </button>
+                        {/* [修改] 顯示更詳細的進度 (可選) */}
+                        {quizProgress[currentModule.id] && (
+                          <p className="text-slate-400 text-sm mt-4">
+                            狀態：已作答
+                            (上次作答: {new Date(quizProgress[currentModule.id].lastAttempted).toLocaleString()})
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
                 </div>
                 {/* 聊天機器人區 */}
@@ -1255,9 +1547,16 @@
                                     {expandedModules[module.id] && (
                                         <div className="pl-4 mt-1 border-l-2 border-slate-700 space-y-1">
                                             {module.submodules.map(submodule => (
-                                                <div key={submodule.id} onClick={() => handleModuleSelect(submodule)} className={`p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-600 font-semibold text-white' : 'hover:bg-slate-800'}`}>
-                                                    {submodule.title}
-                                                </div>
+                                              <div 
+                                                key={submodule.id} 
+                                                onClick={() => handleModuleSelect(submodule)} 
+                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-600 font-semibold text-white' : 'hover:bg-slate-800'}`}
+                                              >
+                                                <span>{submodule.title}</span>
+                                                {submodule.type === 'quiz' && quizProgress[submodule.id] && (
+                                                  <span title="已作答" className="text-green-400">✓</span>
+                                                )}
+                                              </div>
                                             ))}
                                         </div>
                                     )}
@@ -1318,6 +1617,7 @@
               {message}
             </div>
           )}
+          {renderQuizModal()}
         </div>
       );
     };
