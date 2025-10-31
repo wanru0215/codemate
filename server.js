@@ -7,11 +7,8 @@ const cors = require('cors');
 const { spawn } = require('child_process');
 const path = require("path");
 const fetch = require("node-fetch");
-
-// --- 🔽 [新增] 為了整合 socket.io，我們需要 http 和 Server 模組 ---
 const http = require('http');
 const { Server } = require("socket.io");
-// --- 🔼 [新增] ---------------------------------------------
 
 // 2. 初始化 Express 應用
 const app = express();
@@ -20,7 +17,6 @@ const PORT = process.env.PORT || 3000;
 // 3. 設定中間件 (Middleware)
 app.use(cors());
 app.use(express.json());
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- 資料庫連線 ---
@@ -55,6 +51,51 @@ const learningRecordSchema = new mongoose.Schema({
 });
 const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
 
+// 單次作答紀錄的子 Schema
+const AttemptSchema = new mongoose.Schema({
+  answer: { type: String, required: true },
+  isCorrect: { type: Boolean, required: true },
+  timestamp: { type: Date, default: Date.now }
+}, { _id: false }); // _id: false 因為這是內嵌陣列
+
+// 單一問題進度的子 Schema
+const QuestionProgressSchema = new mongoose.Schema({
+  questionId: { type: String, required: true },
+  attempts: [AttemptSchema], // 儲存該問題的所有作答紀錄
+  correctCount: { type: Number, default: 0 },
+  incorrectCount: { type: Number, default: 0 }
+}, { _id: false });
+
+// 單一測驗進度的子 Schema
+const QuizProgressSchema = new mongoose.Schema({
+  quizId: { type: String, required: true },
+  lastAttempted: { type: Date, default: Date.now },
+  // 使用 Map (Mongoose 6+ 功能) 來儲存 "q1" -> QuestionProgress
+  questions: {
+    type: Map,
+    of: QuestionProgressSchema,
+    default: {}
+  }
+}, { _id: false });
+
+// 學習進度 (主 Collection)
+const learningProgressSchema = new mongoose.Schema({
+  studentId: { 
+    type: String, 
+    required: true, 
+    unique: true, 
+    index: true 
+    // 您也可以使用: type: mongoose.Schema.Types.ObjectId, ref: 'Student'
+    // 但使用 studentId (String) 會讓 API 呼叫更直接
+  },
+  // 使用 Map 儲存 "1014" (quizId) -> QuizProgress
+  quizzes: {
+    type: Map,
+    of: QuizProgressSchema,
+    default: {}
+  }
+});
+const LearningProgress = mongoose.model('LearningProgress', learningProgressSchema, 'LearningProgress');
 
 // --- API 路由 (Routes) ---
 
@@ -174,19 +215,6 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// --- 🔽 [移除] 舊的 /api/execute 路由 ---
-/*
-* 我們不再需要這個一次性的 HTTP 路由，
-* 下方的 WebSocket 邏輯將會完全取代它。
-*
-app.post('/api/execute', (req, res) => {
-  const { code } = req.body;
-  // ... 舊的 spawn 邏輯 ...
-});
-*/
-// --- 🔼 [移除] ---------------------------
-
-
 // 儲存對話紀錄 API (保持不變)
 app.post('/api/log/conversation', async (req, res) => {
   try {
@@ -232,8 +260,95 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
   }
 });
 
+// [新 API] 提交「單一」測驗答案
+// 這是前端「每按一題」就會呼叫的 API
+app.post('/api/progress/quiz/attempt', async (req, res) => {
+  try {
+    const { studentId, quizId, questionId, answer, isCorrect } = req.body;
+    
+    if (!studentId || !quizId || !questionId || !answer || isCorrect === undefined) {
+      return res.status(400).json({ message: "缺少必要的提交欄位" });
+    }
 
-// --- 🔽 [修改] 伺服器啟動方式 ---
+    // 1. 找到 (或建立) 該學生的學習進度文件
+    let progressDoc = await LearningProgress.findOne({ studentId: studentId });
+    if (!progressDoc) {
+      progressDoc = new LearningProgress({ studentId: studentId, quizzes: new Map() });
+    }
+
+    // 2. 找到 (或建立) 該測驗的進度
+    if (!progressDoc.quizzes.has(quizId)) {
+      progressDoc.quizzes.set(quizId, { quizId: quizId, questions: new Map() });
+    }
+    const quizProgress = progressDoc.quizzes.get(quizId);
+
+    // 3. 找到 (或建立) 該問題的進度
+    if (!quizProgress.questions.has(questionId)) {
+      quizProgress.questions.set(questionId, { 
+        questionId: questionId, 
+        attempts: [], 
+        correctCount: 0, 
+        incorrectCount: 0 
+      });
+    }
+    const questionProgress = quizProgress.questions.get(questionId);
+
+    // 4. 新增這次的作答紀錄
+    const newAttempt = {
+      answer: answer,
+      isCorrect: isCorrect,
+      timestamp: new Date()
+    };
+    questionProgress.attempts.push(newAttempt);
+
+    // 5. 更新統計數據和時間
+    if (isCorrect) {
+      questionProgress.correctCount += 1;
+    } else {
+      questionProgress.incorrectCount += 1;
+    }
+    quizProgress.lastAttempted = new Date();
+    
+    // 6. 儲存回資料庫
+    // Mongoose Map 需要這樣標記為 'modified' 才能正確儲存
+    progressDoc.markModified('quizzes'); 
+    await progressDoc.save();
+
+    res.status(201).json({ message: "作答紀錄已儲存", newProgress: progressDoc });
+
+  } catch (error) {
+    console.error("儲存測驗作答時發生錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤" });
+  }
+});
+
+
+// [修改後的 API] 取得「所有」測驗進度
+app.get('/api/progress/quiz/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+
+    // 從新的 'LearningProgress' collection 讀取
+    const progressDoc = await LearningProgress.findOne({ studentId: studentId });
+
+    if (!progressDoc) {
+      // 找不到該學生的進度，回傳空物件 (這很正常)
+      return res.status(200).json({ progress: { quizzes: {} } });
+    }
+
+    // 回傳前端期望的格式 { progress: { quizzes: { ... } } }
+    // Mongoose Map 會自動序列化為 JS 物件
+    res.status(200).json({ progress: progressDoc.toObject() }); 
+
+  } catch (error) {
+    console.error("讀取測驗進度時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+
 // 1. 我們使用 Node 原生的 'http' 模組來建立伺服器，並傳入 Express app
 const server = http.createServer(app);
 
@@ -244,10 +359,6 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
-// --- 🔼 [修改] --------------------
-
-
-// --- 🔽 [新增] WebSocket 互動式終端機邏輯 ---
 
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] 一位使用者已連線: ${socket.id}`);
@@ -312,9 +423,6 @@ io.on('connection', (socket) => {
     }
   });
 });
-
-// --- 🔼 [新增] ---------------------------------------------
-
 
 // 4. 啟動伺服器 (修改為啟動 'server' 而不是 'app')
 server.listen(PORT, () => {
