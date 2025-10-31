@@ -52,51 +52,83 @@ const learningRecordSchema = new mongoose.Schema({
 const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
 
 // 單次作答紀錄的子 Schema
-const AttemptSchema = new mongoose.Schema({
-  answer: { type: String, required: true },
-  isCorrect: { type: Boolean, required: true },
-  timestamp: { type: Date, default: Date.now }
-}, { _id: false }); // _id: false 因為這是內嵌陣列
+// [新 API] 提交「單一」測驗答案
+// (請用這整段程式碼替換您 server.js 中的舊版本)
+app.post('/api/progress/quiz/attempt', async (req, res) => {
+  try {
+    const { studentId, quizId, questionId, answer, isCorrect } = req.body;
+    
+    if (!studentId || !quizId || !questionId || !answer || isCorrect === undefined) {
+      return res.status(400).json({ message: "缺少必要的提交欄位" });
+    }
 
-// 單一問題進度的子 Schema
-const QuestionProgressSchema = new mongoose.Schema({
-  questionId: { type: String, required: true },
-  attempts: [AttemptSchema], // 儲存該問題的所有作答紀錄
-  correctCount: { type: Number, default: 0 },
-  incorrectCount: { type: Number, default: 0 }
-}, { _id: false });
+    // 1. 找到 (或建立) 該學生的學習進度文件
+    let progressDoc = await LearningProgress.findOne({ studentId: studentId });
+    if (!progressDoc) {
+      // --- [FIX 1] ---
+      // 不使用 new Map()，Mongoose Schema 會自動將 {} 轉換為 Map
+      progressDoc = new LearningProgress({ studentId: studentId, quizzes: {} }); 
+    }
 
-// 單一測驗進度的子 Schema
-const QuizProgressSchema = new mongoose.Schema({
-  quizId: { type: String, required: true },
-  lastAttempted: { type: Date, default: Date.now },
-  // 使用 Map (Mongoose 6+ 功能) 來儲存 "q1" -> QuestionProgress
-  questions: {
-    type: Map,
-    of: QuestionProgressSchema,
-    default: {}
-  }
-}, { _id: false });
+    // 2. 獲取 'quizzes' Map
+    const quizzesMap = progressDoc.quizzes;
+    let quizProgress = quizzesMap.get(quizId);
 
-// 學習進度 (主 Collection)
-const learningProgressSchema = new mongoose.Schema({
-  studentId: { 
-    type: String, 
-    required: true, 
-    unique: true, 
-    index: true 
-    // 您也可以使用: type: mongoose.Schema.Types.ObjectId, ref: 'Student'
-    // 但使用 studentId (String) 會讓 API 呼叫更直接
-  },
-  // 使用 Map 儲存 "1014" (quizId) -> QuizProgress
-  quizzes: {
-    type: Map,
-    of: QuizProgressSchema,
-    default: {}
+    if (!quizProgress) {
+      // --- [FIX 2] ---
+      // 建立一個普通的 JS 物件，而不是 new Map()
+      quizProgress = { 
+        quizId: quizId, 
+        lastAttempted: new Date(),
+        questions: {} // 'questions' 也初始化為普通物件
+      };
+    }
+
+    // 3. 獲取 'questions' Map (從 quizProgress 物件)
+    // Mongoose 會自動將 { questions: {} } 轉換為 Map
+    const questionsMap = quizProgress.questions;
+    let questionProgress = questionsMap.get(questionId);
+    
+    if (!questionProgress) {
+      // --- [FIX 3] ---
+      // 建立一個普通的 JS 物件
+      questionProgress = { 
+        questionId: questionId, 
+        attempts: [], 
+        correctCount: 0, 
+        incorrectCount: 0 
+      };
+    }
+
+    // 4. 更新這些普通的 JS 物件
+    const newAttempt = { answer, isCorrect, timestamp: new Date() };
+    questionProgress.attempts.push(newAttempt);
+
+    if (isCorrect) {
+      questionProgress.correctCount += 1;
+    } else {
+      questionProgress.incorrectCount += 1;
+    }
+    quizProgress.lastAttempted = new Date(); // 更新測驗的最後作答時間
+
+    // 5. [FIX 4] 將修改後的「普通物件」放回 Mongoose Map 中
+    // 這是觸發 Mongoose 變更的關鍵
+    questionsMap.set(questionId, questionProgress);
+    quizzesMap.set(quizId, quizProgress);
+
+    // [偵錯 Log] 保持這個 log，它至關重要
+    console.log(`[CodeMate 儲存中] 準備儲存 student ${studentId} 的資料:`, JSON.stringify(progressDoc.quizzes));
+
+    // 6. 儲存
+    await progressDoc.save();
+
+    res.status(201).json({ message: "作答紀錄已儲存", newProgress: progressDoc });
+
+  } catch (error) {
+    console.error("儲存測驗作答時發生錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤" });
   }
 });
-const LearningProgress = mongoose.model('LearningProgress', learningProgressSchema, 'LearningProgress');
-
 // --- API 路由 (Routes) ---
 
 // 註冊 API: /api/register (保持不變)
@@ -260,61 +292,42 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
   }
 });
 
-// [新 API] 提交「單一」測驗答案
-// 這是前端「每按一題」就會呼叫的 API
+// [POST API] 提交「單一」測驗答案
 app.post('/api/progress/quiz/attempt', async (req, res) => {
   try {
     const { studentId, quizId, questionId, answer, isCorrect } = req.body;
     
-    if (!studentId || !quizId || !questionId || !answer || isCorrect === undefined) {
+    if (!studentId || !quizId || !questionId || answer === undefined || isCorrect === undefined) {
       return res.status(400).json({ message: "缺少必要的提交欄位" });
     }
 
-    // 1. 找到 (或建立) 該學生的學習進度文件
-    let progressDoc = await LearningProgress.findOne({ studentId: studentId });
-    if (!progressDoc) {
-      progressDoc = new LearningProgress({ studentId: studentId, quizzes: new Map() });
-    }
-
-    // 2. 找到 (或建立) 該測驗的進度
-    if (!progressDoc.quizzes.has(quizId)) {
-      progressDoc.quizzes.set(quizId, { quizId: quizId, questions: new Map() });
-    }
-    const quizProgress = progressDoc.quizzes.get(quizId);
-
-    // 3. 找到 (或建立) 該問題的進度
-    if (!quizProgress.questions.has(questionId)) {
-      quizProgress.questions.set(questionId, { 
-        questionId: questionId, 
-        attempts: [], 
-        correctCount: 0, 
-        incorrectCount: 0 
-      });
-    }
-    const questionProgress = quizProgress.questions.get(questionId);
-
-    // 4. 新增這次的作答紀錄
-    const newAttempt = {
-      answer: answer,
-      isCorrect: isCorrect,
+    // 1. 建立一個新的「作答紀錄」文件
+    const newAttempt = new QuizAttempt({
+      studentId,
+      quizId,
+      questionId,
+      answer,
+      isCorrect,
       timestamp: new Date()
-    };
-    questionProgress.attempts.push(newAttempt);
+    });
 
-    // 5. 更新統計數據和時間
-    if (isCorrect) {
-      questionProgress.correctCount += 1;
-    } else {
-      questionProgress.incorrectCount += 1;
-    }
-    quizProgress.lastAttempted = new Date();
+    // 2. 儲存這筆紀錄 (這一步 100% 可靠)
+    await newAttempt.save();
     
-    // 6. 儲存回資料庫
-    // Mongoose Map 需要這樣標記為 'modified' 才能正確儲存
-    progressDoc.markModified('quizzes'); 
-    await progressDoc.save();
+    // [偵錯 Log]
+    console.log(`[CodeMate 儲存成功] student ${studentId}, quiz ${quizId}, q ${questionId}, correct: ${isCorrect}`);
 
-    res.status(201).json({ message: "作答紀錄已儲存", newProgress: progressDoc });
+    // 3. [重要] 為了讓前端 UI 即時更新，我們必須讀取「所有」紀錄並回傳
+    const allAttempts = await QuizAttempt.find({ studentId: studentId });
+    const reconstructedQuizzes = reconstructProgress(allAttempts);
+
+    // 4. 回傳前端期望的格式
+    res.status(201).json({ 
+      message: "作答紀錄已儲存", 
+      newProgress: { 
+        quizzes: reconstructedQuizzes // 回傳重組後的物件
+      } 
+    });
 
   } catch (error) {
     console.error("儲存測驗作答時發生錯誤:", error);
@@ -323,7 +336,7 @@ app.post('/api/progress/quiz/attempt', async (req, res) => {
 });
 
 
-// [修改後的 API] 取得「所有」測驗進度
+// [GET API] 取得「所有」測驗進度
 app.get('/api/progress/quiz/:studentId', async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -331,17 +344,21 @@ app.get('/api/progress/quiz/:studentId', async (req, res) => {
       return res.status(400).json({ message: '缺少學生 ID' });
     }
 
-    // 從新的 'LearningProgress' collection 讀取
-    const progressDoc = await LearningProgress.findOne({ studentId: studentId });
+    // 1. 從新的 'QuizAttempts' collection 讀取該學生的所有紀錄
+    const allAttempts = await QuizAttempt.find({ studentId: studentId });
+    
+    // [偵錯 Log]
+    console.log(`[CodeMate 讀取中] 找到 student ${studentId} 的 ${allAttempts.length} 筆作答紀錄`);
 
-    if (!progressDoc) {
-      // 找不到該學生的進度，回傳空物件 (這很正常)
-      return res.status(200).json({ progress: { quizzes: {} } });
-    }
+    // 2. 呼叫輔助函數，將扁平資料重組為巢狀物件
+    const reconstructedQuizzes = reconstructProgress(allAttempts);
 
-    // 回傳前端期望的格式 { progress: { quizzes: { ... } } }
-    // Mongoose Map 會自動序列化為 JS 物件
-    res.status(200).json({ progress: progressDoc.toObject() }); 
+    // 3. 回傳前端期望的格式
+    res.status(200).json({ 
+      progress: { 
+        quizzes: reconstructedQuizzes // 回傳重組後的物件
+      } 
+    }); 
 
   } catch (error) {
     console.error("讀取測驗進度時發生錯誤:", error);
