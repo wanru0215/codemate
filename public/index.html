@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/theme/dracula.css">
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/python/python.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/closebrackets.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/matchbrackets.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -18,8 +21,7 @@
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js" defer></script>
-    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js" defer></script>    
     <style>
         /* Custom styles for better layout and aesthetics */
         html, body, #root {
@@ -145,66 +147,93 @@
     function CodeMirrorEditor({ activeTab, handleTabContentChange, handleCodeKeyDown }) {
       const editorRef = React.useRef(null);
       const cmInstance = React.useRef(null);
+      
+      // --- [新增] 使用 Refs 來保存 props，這樣就不會觸發 useEffect 重新綁定 ---
+      const onChangeRef = React.useRef(handleTabContentChange);
+      const onKeyDownRef = React.useRef(handleCodeKeyDown);
 
       React.useEffect(() => {
-            if (editorRef.current && !cmInstance.current) {
-                cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
-                    mode: "python",
-                    theme: "dracula",
-                    lineNumbers: true,
-                    indentUnit: 4,
-                    tabSize: 4,
-                });
+          onChangeRef.current = handleTabContentChange;
+          onKeyDownRef.current = handleCodeKeyDown;
+      }, [handleTabContentChange, handleCodeKeyDown]);
+      // --- [新增結束] ---
 
-                // 同步變化
-                cmInstance.current.on("change", (cm) => {
-                    // 確保 activeTab 存在才呼叫
-                    if(activeTab) {
-                        handleTabContentChange(activeTab.id, cm.getValue());
-                    }
-                });
-                 // 添加鍵盤事件監聽
-                 cmInstance.current.on("keydown", (cm, event) => {
-                     if (activeTab) {
-                         handleCodeKeyDown(event, activeTab.id);
-                     }
-                 });
-            }
+      // --- [修改] Effect 1: 初始化與銷毀 (只執行一次) ---
+      React.useEffect(() => {
+          if (editorRef.current && !cmInstance.current) {
+              cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
+                  mode: "python",
+                  theme: "dracula",
+                  lineNumbers: true,
+                  indentUnit: 4,
+                  tabSize: 4,
+                  // --- [新增] 啟用插件 (見步驟 2 & 3) ---
+                  autoCloseBrackets: true,
+                  matchBrackets: true
+                  // --- [新增結束] ---
+              });
 
-            // 每次切換 tab 時更新內容
-            if (cmInstance.current && activeTab && activeTab.content !== cmInstance.current.getValue()) {
-                // 保存目前游標位置
-                const cursor = cmInstance.current.getCursor();
-                cmInstance.current.setValue(activeTab.content);
-                // 嘗試恢復游標位置 (如果行數還存在)
-                try {
-                    cmInstance.current.setCursor(cursor);
-                } catch (e) {
-                    // 如果舊游標位置無效，移到文件末尾
-                     cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
-                }
-                 // 確保編輯器獲得焦點
-                 setTimeout(() => cmInstance.current.focus(), 0);
-            } else if (cmInstance.current && !activeTab) {
-                 // 如果沒有 activeTab，清空編輯器
-                 cmInstance.current.setValue('');
-            }
+              // 同步變化 (使用 Ref)
+              cmInstance.current.on("change", (cm) => {
+                  // 確保 activeTab 存在才呼叫
+                  // (我們需要 activeTab.id，所以不能只用 Ref)
+                  if(activeTab) {
+                      onChangeRef.current(activeTab.id, cm.getValue());
+                  }
+              });
 
-            // 組件卸載時清理 CodeMirror 實例
-            return () => {
-                if (cmInstance.current) {
-                    cmInstance.current.toTextArea(); // 恢復成 textarea
-                    cmInstance.current = null;
-                }
-            };
-        }, [activeTab]); // 依賴 activeTab 來觸發更新
+              // 添加鍵盤事件監聽 (使用 Ref)
+              cmInstance.current.on("keydown", (cm, event) => {
+                  if (activeTab) {
+                      // [修改] 我們把 cm 實例也傳遞過去
+                      onKeyDownRef.current(cm, event, activeTab.id);
+                  }
+              });
+          }
+
+          // 組件卸載時清理 CodeMirror 實例 (只執行一次)
+          return () => {
+              if (cmInstance.current) {
+                  cmInstance.current.toTextArea(); // 恢復成 textarea
+                  cmInstance.current = null;
+              }
+          };
+      }, []); // <-- [關鍵] 空依賴陣列，確保只執行一次
+      // --- [修改結束] ---
+
+      // --- [新增] Effect 2: 同步內容 (當 activeTab 改變時) ---
+      React.useEffect(() => {
+          if (cmInstance.current) {
+              const currentVal = cmInstance.current.getValue();
+
+              if (activeTab && activeTab.content !== currentVal) {
+                  // 儲存目前游標位置
+                  const cursor = cmInstance.current.getCursor();
+                  cmInstance.current.setValue(activeTab.content);
+                  
+                  // 嘗試恢復游標位置 (如果行數還存在)
+                  try {
+                      cmInstance.current.setCursor(cursor);
+                  } catch (e) {
+                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
+                  }
+                  
+                  // 確保編輯器獲得焦點
+                  setTimeout(() => cmInstance.current.focus(), 0);
+
+              } else if (!activeTab && currentVal !== '') {
+                  // 如果沒有 activeTab，清空編輯器
+                  cmInstance.current.setValue('');
+              }
+          }
+      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
+      // --- [新增結束] ---
 
       return (
-            // 我們仍然需要 textarea 作為 CodeMirror 的基礎
-            <textarea ref={editorRef} style={{ display: 'none' }} />
-        );
+          // 我們仍然需要 textarea 作為 CodeMirror 的基礎
+          <textarea ref={editorRef} style={{ display: 'none' }} />
+      );
     }
-
 
     const App = () => {
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
@@ -1133,35 +1162,23 @@
         }
       };
       
-      const handleCodeKeyDown = (event, tabId) => {
-        // 移除 Shift+Enter 執行程式碼的邏輯，改由按鈕觸發
-        // if (key === 'Enter' && event.shiftKey) { ... } 這段移除
+      const handleCodeKeyDown = (cm, event, tabId) => {
+          // [修改] cm 現在是第一個參數，不再需要從 event.target 獲取
+          if (!cm) return; 
 
-        // ... (Tab, 自動補全括號, 自動縮排等邏輯保持不變)
-        const textarea = event.target; // CodeMirror 傳入的是 event，不是 textarea
-        const cm = event.target?.CodeMirror; // 嘗試從 event 獲取 CodeMirror 實例
-        if (!cm) return; // 如果找不到 CodeMirror 實例，直接返回
+          const key = event.key;
 
-        const { line, ch } = cm.getCursor();
-        const value = cm.getValue();
-        const key = event.key;
+          if (key === 'Tab') {
+              event.preventDefault();
+              cm.execCommand("indentMore"); // 使用 CodeMirror 內建縮排
+          } else if (key === 'Enter') {
+              event.preventDefault();
+              cm.execCommand("newlineAndIndent"); // 使用 CodeMirror 內建換行與縮排
+          }
 
-        const selectionStartOffset = cm.indexFromPos({ line, ch }); // 將行列轉換為字元偏移量
-
-        const pairs = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", };
-
-        if (key === 'Tab') {
-            event.preventDefault();
-            cm.execCommand("indentMore"); // 使用 CodeMirror 內建縮排
-        } else if (key in pairs) {
-            // CodeMirror 通常會自動處理括號補全，這裡可以簡化或移除
-        } else if (key === 'Enter') {
-            event.preventDefault();
-            cm.execCommand("newlineAndIndent"); // 使用 CodeMirror 內建換行與縮排
-        } else if (key === 'Backspace') {
-            // CodeMirror 會自動處理 Backspace 的縮排行為，這裡可能不需要
-        }
+          // 我們不再需要手動處理括號，因為插件 (autoCloseBrackets) 會自動完成
       };
+
       // --- 🔼 [修改] -----------------------------------------
 
       const handleSendChat = async () => {
