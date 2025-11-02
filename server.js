@@ -210,7 +210,7 @@ app.post("/api/chat", async (req, res) => {
     if (!apiKey) {
       return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
     }
-    const modelName = "gemini-pro";
+    const modelName = "gemini-1.0-pro";
     // [FIX] 確保 API URL 使用 v1
     const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
 
