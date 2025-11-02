@@ -1333,7 +1333,20 @@
           // 我們不再需要 try...catch 或 await fetch
           // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
       };
-      // --- 🔼 [修改] ----------------------------------
+      // --- 🔽 [新增] 停止程式碼執行的函數 ---
+      const handleStopCode = () => {
+          // 確保 socket 存在，且有程式正在執行中
+          if (!socket || !isExecuting) return; 
+
+          console.log("[Socket.IO] 正在發送 'stop_code' 事件...");
+          // 向後端發送 'stop_code' 事件
+          socket.emit('stop_code');
+          
+          // 注意：我們「不要」在這裡設定 setIsExecuting(false)
+          // 我們應該等待後端回傳 'terminal_exit' 事件，
+          // 這樣狀態才會 100% 同步
+      };
+      // --- 🔼 [新增] --------------------------
 
       // --- 🔽 [修改] 處理終端機輸入 (加入輸入回顯) ---
       const handleTerminalInput = (event) => {
@@ -1764,21 +1777,32 @@
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
                               <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                      <button
-                                          onClick={() => handleRunCode(activeTab.id)}
-                                          disabled={!activeTab || isExecuting} // 使用 isExecuting 狀態
-                                          className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500 self-start"
-                                      >
-                                          {isExecuting ? '執行中...' : '執行'}
-                                      </button>
-                                      <button
-                                          onClick={() => handleDownloadTabContent(activeTab)}
-                                          className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm self-start"
-                                      >
-                                          下載檔案
-                                      </button>
-                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                      <button
+                                          onClick={() => handleRunCode(activeTab.id)}
+                                          disabled={!activeTab || isExecuting} 
+                                          className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500 self-start"
+                                      >
+                                          {isExecuting ? '執行中...' : '執行'}
+                                      </button>
+                                      
+                                      {/* --- 🔽 [新增] 停止按鈕 --- */}
+                                      <button
+                                          onClick={handleStopCode}
+                                          disabled={!isExecuting} // 只有在執行中才能按
+                                          className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 text-sm disabled:bg-slate-500 self-start"
+                                      >
+                                          停止
+                                      </button>
+                                      {/* --- 🔼 [新增] ------------------ */}
+
+                                      <button
+                                          onClick={() => handleDownloadTabContent(activeTab)}
+                                          className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm self-start"
+                                      >
+                                          下載檔案
+                                      </button>
+                                  </div>
                                   {/* 輸出/錯誤顯示區 */}
                                   <div className="flex-1 text-sm space-y-2">
                                       {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
