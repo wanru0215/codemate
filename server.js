@@ -395,6 +395,19 @@ io.on('connection', (socket) => {
       pythonProcess.stdin.write(data + '\n');
     }
   });
+  socket.on('stop_code', () => {
+    if (pythonProcess) {
+      console.log(`[Socket.IO] 收到 'stop_code' 事件，正在終止 ${socket.id} 的進程...`);
+      // 使用 'SIGKILL' 強制終止訊號，這對無限迴圈最有效
+      pythonProcess.kill('SIGKILL');
+      pythonProcess = null; // 清理進程
+      // .kill() 會自動觸發 'close' 事件
+      // 'close' 事件監聽器會發送 'terminal_exit' 給前端
+      // 所以我們這裡不需要額外發送事件
+    } else {
+      console.log(`[Socket.IO] 收到 'stop_code' 事件，但沒有正在運行的進程。`);
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log(`[Socket.IO] 使用者已離線: ${socket.id}`);
