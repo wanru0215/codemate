@@ -379,7 +379,9 @@ io.on('connection', (socket) => {
     pythonProcess.stderr.on('data', (data) => {
       socket.emit('terminal_output', data.toString());
     });
-    pythonProcess.on('close', () => {
+    pythonProcess.on('close', (code) => {
+      // 通知前端：程式已結束（不顯示退出代碼）
+      socket.emit('terminal_exit', null);
       pythonProcess = null;
     });
     pythonProcess.on('error', (err) => {
