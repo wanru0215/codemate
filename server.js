@@ -146,8 +146,9 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Gemini API 代理 (保持不變)
+// Gemini API 代理
 app.post("/api/chat", async (req, res) => {
-  console.log("1. [API Chat] 收到前端個人化請求...");
+  console.log("1. [API Chat] 收到前端個人化請求 (v1 模式)...");
 
   try {
     const { contents, systemInstruction, studentId } = req.body;
@@ -172,26 +173,48 @@ app.post("/api/chat", async (req, res) => {
         }
     }
 
-    // --- 步驟 2: 組合最終的提示 (Prompt) ---
-    const finalContents = [
-        ...fewShotExamples,
-        ...contents
-    ];
+    // --- 🔽 [FIX] 針對 v1 API 重組 contents 陣列 ---
+    
+    // 1. 取得系統提示文字
+    const systemPromptText = systemInstruction?.parts?.[0]?.text;
+
+    // 2. 取得聊天紀錄 (contents[0] 是 AI 的 "哈囉！"，我們將其略過)
+    // v1 API 陣列必須嚴格以 "user" 角色開始
+    const chatHistory = contents.slice(1); 
+
+    // 3. 建立新的 finalContents 陣列
+    const finalContents = [];
+
+    // 4. 將系統提示作為第一個 "user" 訊息注入
+    if (systemPromptText) {
+        finalContents.push({ role: 'user', parts: [{ text: systemPromptText }] });
+        // 為了保持 "user", "model" 交錯，我們手動加一個 "model" 回應
+        finalContents.push({ role: 'model', parts: [{ text: "好的，我了解了。我是 CodeMate 助教，我會遵循您的指示。" }] });
+    }
+
+    // 5. 加入風格範例 (如果有的話)
+    finalContents.push(...fewShotExamples);
+
+    // 6. 加入真正的聊天紀錄 (已略過 "哈囉")
+    finalContents.push(...chatHistory);
+    // --- 🔼 [FIX] ----------------------------------
     
     const finalPayload = {
-        contents: finalContents,
-        systemInstruction: systemInstruction
+        contents: finalContents
+        // [FIX] 移除 v1 不支援的 systemInstruction 欄位
+        // systemInstruction: systemInstruction 
     };
 
-    // --- 步驟 3: 呼叫 Gemini API ---
+    // --- 步驟 3: 呼叫 Gemini API (使用 v1) ---
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
     }
-    const modelName = "gemini-pro"; // (修正)
+    const modelName = "gemini-pro";
+    // [FIX] 確保 API URL 使用 v1
     const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
 
-    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
+    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini (v1 模式)...`);
 
     const geminiResponse = await fetch(apiUrl, {
       method: "POST",
