@@ -1032,15 +1032,19 @@
               // 監聽程式結束事件
               newSocket.on('terminal_exit', (message) => {
                   setTabs(prevTabs => prevTabs.map(t => {
-                        if (t.id === activeTabId && t.type === 'code') {
-                          const currentOutput = t.output === '執行中...' ? '' : t.output;
-                            return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
-                        }
-                        return t;
+                    if (t.id === activeTabId && t.type === 'code') {
+                      const currentOutput = t.output === '執行中...' ? '' : t.output;
+                      // ✅ 只在 message 有內容時才加上
+                      if (message && message.trim() !== "null") {
+                        return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
+                      }
+                      // 否則只清除「執行中...」狀態，不附加訊息
+                      return { ...t, output: currentOutput, error: '' };
+                    }
+                    return t;
                   }));
                   setIsExecuting(false); // 標記為執行結束
-              });
-
+                });
               // 監聽後端產生的錯誤 (例如 Python 啟動失敗)
               newSocket.on('terminal_error', (errorMessage) => {
                     setTabs(prevTabs => prevTabs.map(t => {
