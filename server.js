@@ -188,8 +188,8 @@ app.post("/api/chat", async (req, res) => {
     if (!apiKey) {
       return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
     }
-    const modelName = "gemini-2.5-flash"; // (修正)
-    const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
+    const modelName = "gemini-2.5-flash-preview-05-20";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
     console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
 
