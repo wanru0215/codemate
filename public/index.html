@@ -1819,17 +1819,17 @@
                                   </div>
                                     {/* --- 🔽 [新增] 終端機輸入框 --- */}
                                     {isExecuting && ( // 只在執行中顯示輸入框
-  <div className="mt-auto pt-2 flex-shrink-0">
-    <input
-      ref={terminalInputRef}
-      type="text"
-      onKeyDown={handleTerminalInput}
-      placeholder="請在此輸入"
-      className="w-full p-2 bg-slate-800 border border-slate-600 text-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 placeholder-slate-500"
-      disabled={!isWaitingForInput} // (可選：只在等待輸入時可用)
-    />
-  </div>
-)}
+                                      <div className="mt-auto pt-2 flex-shrink-0">
+                                        <input
+                                          ref={terminalInputRef}
+                                          type="text"
+                                          onKeyDown={handleTerminalInput}
+                                          placeholder="請在此輸入"
+                                          className="w-full p-2 bg-slate-800 border border-slate-600 text-slate-200 text-sm rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 placeholder-slate-500"
+                                          disabled={!isWaitingForInput} // (可選：只在等待輸入時可用)
+                                        />
+                                      </div>
+                                    )}
                                     {/* --- 🔼 [新增] -------------------- */}
                               </div>
                           </div>
