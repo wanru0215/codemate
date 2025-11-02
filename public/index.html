@@ -1767,7 +1767,7 @@
                       {activeTab?.type === 'code' && (
                           <div className="h-full flex flex-col">
                               {/* CodeMirror 編輯器 (保持高度為一半) */}
-                              <div className="flex-1 h-1/2 overflow-hidden">
+                              <div className="h-1/2 overflow-hidden">
                                   <CodeMirrorEditor
                                       activeTab={activeTab}
                                       handleTabContentChange={handleTabContentChange}
@@ -1777,32 +1777,30 @@
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
                               <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
-                                  <div className="flex items-center gap-2 w-full">
-                                      <button
-                                          onClick={() => handleRunCode(activeTab.id)}
-                                          disabled={!activeTab || isExecuting} 
-                                          className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500 flex-grow"
-                                      >
-                                          {isExecuting ? '執行中...' : '執行'}
-                                      </button>
-                                      
-                                      {/* --- 🔽 [新增] 停止按鈕 --- */}
-                                      <button
-                                          onClick={handleStopCode}
-                                          disabled={!isExecuting} // 只有在執行中才能按
-                                          className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 text-sm disabled:bg-slate-500 flex-grow"
-                                      >
-                                          停止
-                                      </button>
-                                      {/* --- 🔼 [新增] ------------------ */}
+                                  <div className="flex justify-start items-center gap-2 mb-2">
+                                    <button
+                                      onClick={() => handleRunCode(activeTab.id)}
+                                      disabled={!activeTab || isExecuting}
+                                      className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500"
+                                    >
+                                      {isExecuting ? '執行中...' : '執行'}
+                                    </button>
 
-                                      <button
-                                          onClick={() => handleDownloadTabContent(activeTab)}
-                                          className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm flex-grow"
-                                      >
-                                          下載檔案
-                                      </button>
-                                  </div>
+                                    <button
+                                      onClick={handleStopCode}
+                                      disabled={!isExecuting}
+                                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 text-sm disabled:bg-slate-500"
+                                    >
+                                      停止
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleDownloadTabContent(activeTab)}
+                                      className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm"
+                                    >
+                                      下載檔案
+                                    </button>
+                                  </div>
                                   {/* 輸出/錯誤顯示區 */}
                                   <div className="flex-1 text-sm space-y-2">
                                       {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
