@@ -981,50 +981,51 @@
       }, [tabs, activeTabId, currentModule, studentId]); // chatMessages is REMOVED from dependency array
 
       // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
-      useEffect(() => {
+      // --- 🔽 [FIX] WebSocket 連線與 Xterm.js 整合 (修正版) ---
+      useEffect(() => {
           // 只在登入後且在學習頁面時建立連線
           if (isLoggedIn && page === 'learning') {
-              const newSocket = io(window.location.origin, {
-                  // ...
-              });
+              const newSocket = io(window.location.origin, {});
               setSocket(newSocket);
               console.log("[Socket.IO] 正在嘗試連線...");
 
-              // --- 🔽 Xterm.js 初始化 ---
-              // 1. 確保 DOM 元素存在且 Xterm 實例尚未建立
+              // --- Xterm.js 初始化 ---
               if (terminalContainerRef.current && !xtermInstanceRef.current) {
                   console.log("[Xterm.js] 正在初始化終端機...");
                   const term = new window.Terminal({
                       cursorBlink: true,
-                      theme: { // 我們使用 dracula 主題色來匹配
-                        background: '#0f172a', // slate-900
-                        foreground: '#e2e8f0', // slate-200
-                        cursor: '#14b8a6', // teal-500
+                      theme: { 
+                        background: '#0f172a', 
+                        foreground: '#e2e8f0', 
+                        cursor: '#14b8a6', 
                       },
                       fontFamily: 'monospace',
                       fontSize: 14,
-                      convertEol: true // 自動將 \n 轉為 \r\n
+                      convertEol: true 
                   });
-                  const fitAddon = new window.FitAddon.FitAddon();
                   
-                  // 2. 儲存實例到 Refs
+                  // --- 🔽 [FIX] 修正了 FitAddon 的類別名稱 ---
+                  // 錯誤: new window.FitAddon.FitAddon()
+                  // 正確: new window.FitAddon()
+                  const fitAddon = new window.FitAddon();
+                  // --- 🔼 [FIX] --------------------------
+                  
                   xtermInstanceRef.current = term;
                   fitAddonRef.current = fitAddon;
                   
-                  // 3. 載入插件並掛載到 DOM
                   term.loadAddon(fitAddon);
                   term.open(terminalContainerRef.current);
-                  fitAddon.fit(); // 讓終端機填滿容器
+                  fitAddon.fit(); 
                   term.write('歡迎使用 CodeMate 終端機。\r\n');
 
-                  // 4. [關鍵] 監聽 Xterm.js 的使用者輸入
+                  // 監聽 Xterm.js 的使用者輸入
                   term.onData((data) => {
-                      // 當使用者在終端機中打字時 (包含 Enter)，將資料發送到後端
                       newSocket.emit('terminal_input', data);
                   });
               }
-              // --- 🔼 Xterm.js 初始化結束 ---
+              // --- Xterm.js 初始化結束 ---
 
+              // --- 將所有 Socket 監聽器放在這裡 ---
               newSocket.on('connect', () => {
                   console.log(`[Socket.IO] 連線成功: ${newSocket.id}`);
                   xtermInstanceRef.current?.write('\r\n[服務已連接]\r\n');
@@ -1037,47 +1038,46 @@
                   setIsExecuting(false);
               });
               
-              // [關鍵] 監聽來自後端的輸出
               newSocket.on('terminal_output', (data) => {
-                  // [修改] 不再更新 'tabs' state，而是直接寫入 Xterm
                   xtermInstanceRef.current?.write(data);
-                  // 移除 isWaitingForInput 邏輯
               });
 
-              // [關鍵] 監聽程式結束事件
               newSocket.on('terminal_exit', (message) => {
-                  // [修改] 不再更新 'tabs' state，而是直接寫入 Xterm
                   xtermInstanceRef.current?.write(`\r\n\n--- ${message} ---\r\n`);
                   setIsExecuting(false); 
               });
 
-              // [關鍵] 監聽後端產生的錯誤
               newSocket.on('terminal_error', (errorMessage) => {
-                  // [修改] 不再更新 'tabs' state，而是直接寫入 Xterm
                   xtermInstanceRef.current?.write(`\r\n[錯誤]: ${errorMessage}\r\n`);
                   setIsExecuting(false);
-                });
+              });
+              // --- 監聽器結束 ---
 
+              // 清理函數
               return () => {
-                  console.log('[Socket.IO] 清理連線...');
+                  console.log('[Socket.IO & Xterm.js] 清理連線與終端機...');
                   newSocket.disconnect();
-                  // [新增] 清理 Xterm.js 實例
                   if (xtermInstanceRef.current) {
                       xtermInstanceRef.current.dispose();
                       xtermInstanceRef.current = null;
                   }
+                  if (fitAddonRef.current) { // 也清理 addon
+                      fitAddonRef.current = null;
+                  }
               };
           } else if (socket) {
+                // 這是當 isLoggedIn=false 或 page!='learning' 時
                 console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
                 socket.disconnect();
                 setSocket(null);
-                // [新增] 清理 Xterm.js 實例
                 if (xtermInstanceRef.current) {
                     xtermInstanceRef.current.dispose();
                     xtermInstanceRef.current = null;
                 }
           }
-      }, [isLoggedIn, page, activeTabId]); // 保持依賴不變
+      // --- 🔽 [FIX] 移除了 activeTabId ---
+      }, [isLoggedIn, page]); 
+      // --- 🔼 [FIX] --------------------------
       // --- 🔼 [新增] --------------------------
       // --- 🔽 [新增] 自動聚焦效果 ---
 
