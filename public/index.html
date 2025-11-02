@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeMate 學習平台</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.9.0/lib/xterm-addon-fit.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/theme/dracula.css">
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.js"></script>
@@ -246,10 +243,9 @@
       const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
       const [isQuizComplete, setIsQuizComplete] = useState(false); // 測驗是否已答完
       const [socket, setSocket] = useState(null);
+      const terminalInputRef = useRef(null); // Ref for terminal input
       const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
-      const terminalContainerRef = useRef(null); // 用於 React 渲染 Xterm.js 的 <div />
-      const xtermInstanceRef = useRef(null); // 存放 Xterm.js 的 Terminal 物件
-      const fitAddonRef = useRef(null); // 存放 Xterm.js 的 'fit' 插件
+      const [isWaitingForInput, setIsWaitingForInput] = useState(false);
 
       const [isLoginView, setIsLoginView] = useState(true);
       const [studentId, setStudentId] = useState('');
@@ -981,105 +977,102 @@
       }, [tabs, activeTabId, currentModule, studentId]); // chatMessages is REMOVED from dependency array
 
       // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
-      // --- 🔽 [FIX] WebSocket 連線與 Xterm.js 整合 (修正版) ---
-      useEffect(() => {
-          // 只在登入後且在學習頁面時建立連線
-          if (isLoggedIn && page === 'learning') {
-              const newSocket = io(window.location.origin, {});
-              setSocket(newSocket);
-              console.log("[Socket.IO] 正在嘗試連線...");
+      useEffect(() => {
+          // 只在登入後且在學習頁面時建立連線
+          if (isLoggedIn && page === 'learning') {
+              // 使用 window.location.origin 來自動獲取伺服器位址 (Render 會處理好)
+              const newSocket = io(window.location.origin, {
+                  // 您可以加入其他選項，例如 transports: ['websocket']
+              });
+              setSocket(newSocket);
+              console.log("[Socket.IO] 正在嘗試連線...");
 
-              // --- Xterm.js 初始化 ---
-              if (terminalContainerRef.current && !xtermInstanceRef.current) {
-                  console.log("[Xterm.js] 正在初始化終端機...");
-                  const term = new window.Terminal({
-                      cursorBlink: true,
-                      theme: { 
-                        background: '#0f172a', 
-                        foreground: '#e2e8f0', 
-                        cursor: '#14b8a6', 
-                      },
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                      convertEol: true 
-                  });
-                  
-                  // --- 🔽 [FIX] 修正了 FitAddon 的類別名稱 ---
-                  // 錯誤: new window.FitAddon.FitAddon()
-                  // 正確: new window.FitAddon()
-                  const fitAddon = new window.FitAddon();
-                  // --- 🔼 [FIX] --------------------------
-                  
-                  xtermInstanceRef.current = term;
-                  fitAddonRef.current = fitAddon;
-                  
-                  term.loadAddon(fitAddon);
-                  term.open(terminalContainerRef.current);
-                  fitAddon.fit(); 
-                  term.write('歡迎使用 CodeMate 終端機。\r\n');
+              newSocket.on('connect', () => {
+                  console.log(`[Socket.IO] 連線成功: ${newSocket.id}`);
+                  showMessageModal('已連接到執行服務。');
+              });
 
-                  // 監聽 Xterm.js 的使用者輸入
-                  term.onData((data) => {
-                      newSocket.emit('terminal_input', data);
-                  });
-              }
-              // --- Xterm.js 初始化結束 ---
+              newSocket.on('disconnect', () => {
+                  console.log('[Socket.IO] 連線中斷');
+                  setSocket(null); // 清理 socket 狀態
+                  // 如果有程式碼正在執行，可能需要更新 UI 狀態
+                  setIsExecuting(false);
+                    setTabs(prevTabs => prevTabs.map(t => t.output === '執行中...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
+                  showMessageModal('與執行服務連線中斷。');
+              });
 
-              // --- 將所有 Socket 監聽器放在這裡 ---
-              newSocket.on('connect', () => {
-                  console.log(`[Socket.IO] 連線成功: ${newSocket.id}`);
-                  xtermInstanceRef.current?.write('\r\n[服務已連接]\r\n');
-              });
+              newSocket.on('connect_error', (err) => {
+                    console.error('[Socket.IO] 連線錯誤:', err);
+                    showMessageModal(`無法連接執行服務: ${err.message}`);
+                });
 
-              newSocket.on('disconnect', () => {
-                  console.log('[Socket.IO] 連線中斷');
-                  xtermInstanceRef.current?.write('\r\n[服務已中斷連線]\r\n');
-                  setSocket(null); 
-                  setIsExecuting(false);
-              });
-              
-              newSocket.on('terminal_output', (data) => {
-                  xtermInstanceRef.current?.write(data);
-              });
+              // 監聽來自後端的輸出
+              newSocket.on('terminal_output', (data) => {
+                  // --- 🔽 [修改] 偵測是否需要輸入 ---
+                  let shouldWaitForInput = false;
+                  // 簡單的偵測邏輯：如果輸出結尾是 ': ' 且沒有換行，可能是在等待輸入
+                  if (data.trim().endsWith(':')) {
+                        shouldWaitForInput = true;
+                  }
+                  setIsWaitingForInput(shouldWaitForInput); // 設定等待狀態
+                  // --- 🔼 [修改] --------------------
+                  setTabs(prevTabs => {
+                      return prevTabs.map(t => {
+                          if (t.id === activeTabId && t.type === 'code') {
+                              // 將新收到的 data 附加到現有的 output 後面
+                              // 如果之前是 '執行中...', 就替換掉
+                              const currentOutput = t.output === '執行中...' ? '' : t.output;
+                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
+                          }
+                          return t;
+                      });
+                  });
+              });
 
-              newSocket.on('terminal_exit', (message) => {
-                  xtermInstanceRef.current?.write(`\r\n\n--- ${message} ---\r\n`);
-                  setIsExecuting(false); 
-              });
+              // 監聽程式結束事件
+              newSocket.on('terminal_exit', (message) => {
+                  setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          const currentOutput = t.output === '執行中...' ? '' : t.output;
+                            return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
+                        }
+                        return t;
+                  }));
+                  setIsExecuting(false); // 標記為執行結束
+              });
 
-              newSocket.on('terminal_error', (errorMessage) => {
-                  xtermInstanceRef.current?.write(`\r\n[錯誤]: ${errorMessage}\r\n`);
-                  setIsExecuting(false);
-              });
-              // --- 監聽器結束 ---
+              // 監聽後端產生的錯誤 (例如 Python 啟動失敗)
+              newSocket.on('terminal_error', (errorMessage) => {
+                    setTabs(prevTabs => prevTabs.map(t => {
+                        if (t.id === activeTabId && t.type === 'code') {
+                          return { ...t, output: '', error: errorMessage };
+                        }
+                        return t;
+                    }));
+                    setIsExecuting(false); // 標記為執行結束
+                });
 
-              // 清理函數
-              return () => {
-                  console.log('[Socket.IO & Xterm.js] 清理連線與終端機...');
-                  newSocket.disconnect();
-                  if (xtermInstanceRef.current) {
-                      xtermInstanceRef.current.dispose();
-                      xtermInstanceRef.current = null;
-                  }
-                  if (fitAddonRef.current) { // 也清理 addon
-                      fitAddonRef.current = null;
-                  }
-              };
-          } else if (socket) {
-                // 這是當 isLoggedIn=false 或 page!='learning' 時
-                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
-                socket.disconnect();
-                setSocket(null);
-                if (xtermInstanceRef.current) {
-                    xtermInstanceRef.current.dispose();
-                    xtermInstanceRef.current = null;
-                }
-          }
-      // --- 🔽 [FIX] 移除了 activeTabId ---
-      }, [isLoggedIn, page]); 
-      // --- 🔼 [FIX] --------------------------
+
+              // 清理函數：當組件卸載或依賴項變化時斷開連線
+              return () => {
+                  console.log('[Socket.IO] 清理連線...');
+                  newSocket.disconnect();
+              };
+          } else if (socket) {
+                // 如果登出或離開學習頁面，斷開連線
+                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
+                socket.disconnect();
+                setSocket(null);
+          }
+      }, [isLoggedIn, page, activeTabId]); // 加入 activeTabId 確保監聽器能更新正確的 tab
       // --- 🔼 [新增] --------------------------
       // --- 🔽 [新增] 自動聚焦效果 ---
+      useEffect(() => {
+          if (isWaitingForInput && terminalInputRef.current) {
+              terminalInputRef.current.focus();
+          }
+      }, [isWaitingForInput]); // 當 isWaitingForInput 變化時觸發
+      // --- 🔼 [新增] ------------------
 
       const showMessageModal = (msg) => {
         setMessage(msg);
@@ -1327,19 +1320,19 @@
       
       // --- 🔽 [修改] handleRunCode - 改用 WebSocket ---
       const handleRunCode = (tabId) => {
-          const tab = tabs.find(t => t.id === tabId);
-          if (!tab || !socket || isExecuting || !xtermInstanceRef.current) return; 
+          const tab = tabs.find(t => t.id === tabId);
+          if (!tab || !socket || isExecuting) return; // 檢查 socket 是否存在且沒有程式在執行中
 
-          setIsExecuting(true); 
-          
-          // --- 🔽 [修改] 清空 Xterm.js 並給予提示 ---
-          xtermInstanceRef.current.clear();
-          xtermInstanceRef.current.focus(); // 讓使用者可以立即輸入
-          xtermInstanceRef.current.write('--- 程式開始執行 ---\r\n');
-          // --- 🔼 [修改] --------------------------
+          setIsExecuting(true); // 標記為正在執行
+          // 清空之前的輸出和錯誤，並顯示 "執行中..."
+          setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
 
-          socket.emit('run_code', tab.content);
-      };
+          // 使用 socket.emit 發送程式碼到後端
+          socket.emit('run_code', tab.content);
+
+          // 我們不再需要 try...catch 或 await fetch
+          // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
+      };
       // --- 🔽 [新增] 停止程式碼執行的函數 ---
       const handleStopCode = () => {
           // 確保 socket 存在，且有程式正在執行中
@@ -1354,6 +1347,31 @@
           // 這樣狀態才會 100% 同步
       };
       // --- 🔼 [新增] --------------------------
+
+      // --- 🔽 [修改] 處理終端機輸入 (加入輸入回顯) ---
+      const handleTerminalInput = (event) => {
+        if (event.key === 'Enter' && socket && isExecuting) {
+            event.preventDefault(); // 避免預設行為
+            const input = event.target.value;
+            
+            // 1. 立刻將輸入內容回顯到 output 狀態
+            setTabs(prevTabs => prevTabs.map(t => {
+                if (t.id === activeTabId && t.type === 'code') {
+                    // 將輸入的文字和一個換行符附加到現有 output
+                    const currentOutput = t.output === '執行中...' ? '' : t.output;
+                    return { ...t, output: currentOutput + input + '\n' }; 
+                }
+                return t;
+            }));
+
+            // 2. 將輸入發送到後端
+            socket.emit('terminal_input', input); 
+            
+            // 3. 清空輸入框
+            event.target.value = ''; 
+        }
+      };
+      // --- 🔼 [修改] --------------------
       
       const handleRemoveTab = (id) => {
         const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
@@ -1757,7 +1775,7 @@
                                   />
                               </div>
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
-                              <div className="h-1/2 flex flex-col pt-2 gap-2"> {/* 新增 overflow-y-auto */}
+                              <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
                                   <div className="flex justify-start items-center gap-2 mb-2">
                                     <button
@@ -1784,12 +1802,35 @@
                                     </button>
                                   </div>
                                   {/* 輸出/錯誤顯示區 */}
-                                  <div 
-                                      ref={terminalContainerRef} 
-                                      // flex-1 讓它填滿 h-1/2 容器的剩餘所有空間
-                                      // overflow-hidden 是必須的，因為 Xterm.js 會自己處理捲動
-                                      className="flex-1 w-full h-full overflow-hidden" 
-                                  />
+                                  <div className="flex-1 text-sm space-y-2">
+                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
+                                      {(activeTab.output || activeTab.error) && (
+                                          <div>
+                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+                                                  {activeTab.error ? '錯誤:' : '輸出:'}
+                                              </strong>
+                                              {/* 使用 pre 標籤顯示，保留換行和空格 */}
+                                              <pre className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}>
+                                                  <code>{activeTab.output || activeTab.error}</code>
+                                              </pre>
+                                          </div>
+                                      )}
+                                      {/* --- 🔼 [修改] -------------------- */}
+                                  </div>
+                                    {/* --- 🔽 [新增] 終端機輸入框 --- */}
+                                    {isExecuting && ( // 只在執行中顯示輸入框
+  <div className="mt-auto pt-2 flex-shrink-0">
+    <input
+      ref={terminalInputRef}
+      type="text"
+      onKeyDown={handleTerminalInput}
+      placeholder="請在此輸入"
+      className="w-full p-2 bg-slate-800 border border-slate-600 text-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 placeholder-slate-500"
+      disabled={!isWaitingForInput} // (可選：只在等待輸入時可用)
+    />
+  </div>
+)}
+                                    {/* --- 🔼 [新增] -------------------- */}
                               </div>
                           </div>
                       )}
