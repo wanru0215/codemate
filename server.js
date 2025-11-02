@@ -379,10 +379,9 @@ io.on('connection', (socket) => {
     pythonProcess.stderr.on('data', (data) => {
       socket.emit('terminal_output', data.toString());
     });
-    pythonProcess.on('close', (code) => {
-      socket.emit('terminal_exit', `程式執行完畢，退出代碼: ${code}`);
-      pythonProcess = null; 
-    });
+    pythonProcess.on('close', () => {
+      pythonProcess = null;
+    });
     pythonProcess.on('error', (err) => {
       console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
       socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
