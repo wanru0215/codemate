@@ -239,11 +239,12 @@
 
     const App = () => {
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
-      const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
-      const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
-      const [isQuizComplete, setIsQuizComplete] = useState(false); // 測驗是否已答完
+      const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
+      const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
+      const [isQuizComplete, setIsQuizComplete] = useState(false); // 測驗是否已答完
       const [socket, setSocket] = useState(null);
-      const terminalInputRef = useRef(null); // Ref for terminal input
+      const terminalInputRef = useRef(null);
+      const terminalOutputRef = useRef(null); // Ref for terminal input
       const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
       const [isWaitingForInput, setIsWaitingForInput] = useState(false);
 
@@ -274,6 +275,7 @@
       const [tabs, setTabs] = useState([]);
       const [activeTabId, setActiveTabId] = useState(null);
       const [nextTabId, setNextTabId] = useState(1);
+      const activeTab = tabs.find(tab => tab.id === activeTabId);
       const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
       const [currentQuiz, setCurrentQuiz] = useState(null); // 存放當前正在作答的測驗模組
       const [quizAnswers, setQuizAnswers] = useState({}); // 存放使用者的答案 { q1: 'true', q2: 'Array (陣列)' }
@@ -851,118 +853,118 @@
     }, [page]);
 
       useEffect(() => {
-        const loadData = async () => {
-          const currentStudentId = localStorage.getItem('studentId'); 
-          
-          if (!currentStudentId) {
-              console.error("loadData 錯誤：在 localStorage 中找不到 studentId。");
-              return;
-          }
+        const loadData = async () => {
+          const currentStudentId = localStorage.getItem('studentId'); 
+          
+          if (!currentStudentId) {
+              console.error("loadData 錯誤：在 localStorage 中找不到 studentId。");
+              return;
+          }
 
-          // --- 🔽 [偵錯 1] 確認學號 ---
-          console.log(`[CodeMate 偵錯 1] loadData 已啟動，學號: ${currentStudentId}`);
-          // --- 🔼 --------------------
+          // --- 🔽 [偵錯 1] 確認學號 ---
+          console.log(`[CodeMate 偵錯 1] loadData 已啟動，學號: ${currentStudentId}`);
+          // --- 🔼 --------------------
 
-          // 1. 載入對話紀錄 (保持不變)
-          try {
-            const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${currentStudentId}`);
-            if (!res.ok) throw new Error('無法從伺服器讀取對話紀錄');
-            const conversation = await res.json();
-            if (conversation && conversation.length > 0) {
-              setChatMessages(conversation);
-            } else {
-              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-            }
-          } catch (error) {
-            console.error("讀取對話紀錄失敗:", error);
-            setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-          }
+          // 1. 載入對話紀錄 (保持不變)
+          try {
+            const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${currentStudentId}`);
+            if (!res.ok) throw new Error('無法從伺服器讀取對話紀錄');
+            const conversation = await res.json();
+            if (conversation && conversation.length > 0) {
+              setChatMessages(conversation);
+            } else {
+              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+            }
+          } catch (error) {
+            console.error("讀取對話紀錄失敗:", error);
+            setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
+          }
 
-          // 2. 載入測驗進度
-          try {
-              const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${currentStudentId}`);
-              // --- 🔽 [偵錯 2] 確認 API 回應 ---
-              console.log(`[CodeMate 偵錯 2] 測驗 API 回應狀態: ${res.status}`, res.ok);
-              // --- 🔼 --------------------
-              if (res.ok) {
-                  const data = await res.json();
-                  // --- 🔽 [偵錯 3] 確認從 API 拿到的原始資料 ---
-                  console.log('[CodeMate 偵錯 3] 拿到的原始進度資料 (data):', JSON.stringify(data));
-                  // --- 🔼 --------------------
+          // 2. 載入測驗進度
+          try {
+              const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${currentStudentId}`);
+              // --- 🔽 [偵錯 2] 確認 API 回應 ---
+              console.log(`[CodeMate 偵錯 2] 測驗 API 回應狀態: ${res.status}`, res.ok);
+              // --- 🔼 --------------------
+              if (res.ok) {
+                  const data = await res.json();
+                  // --- 🔽 [偵錯 3] 確認從 API 拿到的原始資料 ---
+                  console.log('[CodeMate 偵錯 3] 拿到的原始進度資料 (data):', JSON.stringify(data));
+                  // --- 🔼 --------------------
 
-                  const progressToSet = data.progress.quizzes || {};
-                  // --- 🔽 [偵錯 4] 確認最終要設定到 state 的值 ---
-                  console.log('[CodeMate 偵錯 4] 準備設定到 quizProgress state 的值:', progressToSet);
-                  // --- 🔼 --------------------
-                  
-                  setQuizProgress(progressToSet); 
-              } else {
-                  console.error("無法從 DB 載入測驗進度 (API 回應 not ok)");
-                  setQuizProgress({});
-              }
-          } catch (e) {
-              console.error("載入測驗進度 API 請求失敗:", e);
-              setQuizProgress({});
-          }
+                  const progressToSet = data.progress.quizzes || {};
+                  // --- 🔽 [偵錯 4] 確認最終要設定到 state 的值 ---
+                  console.log('[CodeMate 偵錯 4] 準備設定到 quizProgress state 的值:', progressToSet);
+                  // --- 🔼 --------------------
+                  
+                  setQuizProgress(progressToSet); 
+              } else {
+                  console.error("無法從 DB 載入測驗進度 (API 回應 not ok)");
+                  setQuizProgress({});
+              }
+          } catch (e) {
+              console.error("載入測驗進度 API 請求失敗:", e);
+              setQuizProgress({});
+          }
 
-          // 3. 載入課程/分頁進度 (保持不變)
-          setCourses(mockCourses);
-          const savedProgressRaw = localStorage.getItem(`progress_${currentStudentId}`); 
+          // 3. 載入課程/分頁進度 (保持不變)
+          setCourses(mockCourses);
+          const savedProgressRaw = localStorage.getItem(`progress_${currentStudentId}`); 
 
-          if (savedProgressRaw) {
-            try {
-              const savedProgress = JSON.parse(savedProgressRaw);
-              const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
-              if (!lastCourse) {
-                  return;
-              }
-              const courseModules = mockModules[lastCourse.id] || [];
-              const lastModuleId = savedProgress.lastModuleId;
-              let lastModule = null;
-              let parentModule = null;
+          if (savedProgressRaw) {
+            try {
+              const savedProgress = JSON.parse(savedProgressRaw);
+              const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
+              if (!lastCourse) {
+                  return;
+              }
+              const courseModules = mockModules[lastCourse.id] || [];
+              const lastModuleId = savedProgress.lastModuleId;
+              let lastModule = null;
+              let parentModule = null;
 
-              for (const module of courseModules) {
-                  if (module.id === lastModuleId) { lastModule = module; break; }
-                  if (module.submodules) {
-                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
-                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
-                  }
-              }
+              for (const module of courseModules) {
+                  if (module.id === lastModuleId) { lastModule = module; break; }
+                  if (module.submodules) {
+                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
+                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
+                  }
+              }
 
-              if (!lastModule && courseModules.length > 0) {
-                  const firstModule = courseModules[0];
-                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
-                  if (firstModule.submodules) parentModule = firstModule;
-              }
-              
-              setSelectedCourse(lastCourse);
-              setModules(courseModules);
-              setCurrentModule(lastModule);
-              if (parentModule) {
-                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
-              }
-              
-              if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
-                  setTabs(savedProgress.tabs);
-                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
-                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
-              } else if (lastModule) {
-                  handleModuleSelect(lastModule, true);
-              }               
-            } catch (error) {
-              console.error("讀取進度失敗，將重設為預設值:", error);
-              localStorage.removeItem(`progress_${currentStudentId}`);
-              if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
-            }
-          } else {
-            if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
-          }
-        };
+              if (!lastModule && courseModules.length > 0) {
+                  const firstModule = courseModules[0];
+                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
+                  if (firstModule.submodules) parentModule = firstModule;
+              }
+              
+              setSelectedCourse(lastCourse);
+              setModules(courseModules);
+              setCurrentModule(lastModule);
+              if (parentModule) {
+                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
+              }
+              
+              if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
+                  setTabs(savedProgress.tabs);
+                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
+                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
+              } else if (lastModule) {
+                  handleModuleSelect(lastModule, true);
+              }               
+            } catch (error) {
+              console.error("讀取進度失敗，將重設為預設值:", error);
+              localStorage.removeItem(`progress_${currentStudentId}`);
+              if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+            }
+          } else {
+            if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+          }
+        };
 
-        if (page === 'learning' && isLoggedIn && studentId) {
-          loadData();
-        }
-      }, [page, isLoggedIn, studentId]);
+        if (page === 'learning' && isLoggedIn && studentId) {
+          loadData();
+        }
+      }, [page, isLoggedIn, studentId]);
 
       useEffect(() => {
           if (page === 'learning' && isLoggedIn && currentModule && studentId) {
@@ -1008,25 +1010,36 @@
 
               // 監聽來自後端的輸出
               newSocket.on('terminal_output', (data) => {
-                  // --- 🔽 [修改] 偵測是否需要輸入 ---
-                  let shouldWaitForInput = false;
-                  // 簡單的偵測邏輯：如果輸出結尾是 ': ' 且沒有換行，可能是在等待輸入
-                  if (data.trim().endsWith(':')) {
-                        shouldWaitForInput = true;
-                  }
-                  setIsWaitingForInput(shouldWaitForInput); // 設定等待狀態
-                  // --- 🔼 [修改] --------------------
-                  setTabs(prevTabs => {
-                      return prevTabs.map(t => {
-                          if (t.id === activeTabId && t.type === 'code') {
-                              // 將新收到的 data 附加到現有的 output 後面
-                              // 如果之前是 '執行中...', 就替換掉
-                              const currentOutput = t.output === '執行中...' ? '' : t.output;
-                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
-                          }
-                          return t;
-                      });
-                  });
+	                  // --- 🔽 [修改] 偵測是否需要輸入 ---
+	                  let shouldWaitForInput = false;
+	                  // 偵測邏輯：如果輸出結尾是 ':' 或 '?'，或包含 'input' 提示，則視為等待輸入
+	                  // 為了更可靠，我們只在程式還在執行中，且有輸出時，才將狀態設為 true
+	                  // 由於後端已經發送了輸出，我們直接根據輸出內容來判斷
+	                  // 這裡採用最寬鬆的判斷：只要程式在執行中，且有輸出，就顯示輸入框
+	                  // 這樣使用者可以隨時輸入，但更精確的判斷是檢查輸出是否為 input() 的提示
+	                  // 由於您的程式碼是 input('guess a word')，輸出是 'guess a word'，結尾沒有 ':'
+	                  // 我們將判斷邏輯改為：只要輸出不為空，且程式還在執行中，就顯示輸入框
+	                  if (data.trim().length > 0) {
+	                        shouldWaitForInput = true;
+	                  }
+	                  setIsWaitingForInput(shouldWaitForInput); // 設定等待狀態
+	                  // --- 🔼 [修改] --------------------
+	                  setTabs(prevTabs => {
+	                      // 確保只更新當前活躍的 Tab
+	                      const targetTab = prevTabs.find(t => t.id === activeTabId && t.type === 'code');
+	                      if (!targetTab) return prevTabs;
+	                      
+	                      const newTabs = prevTabs.map(t => {
+	                          if (t.id === activeTabId && t.type === 'code') {
+	                              // 將新收到的 data 附加到現有的 output 後面
+	                              // 如果之前是 '執行中...', 就替換掉
+	                              const currentOutput = t.output === '執行中...' ? '' : t.output;
+	                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
+	                          }
+	                          return t;
+	                      });
+	                      return newTabs;
+	                  });
               });
 
               // 監聽程式結束事件
@@ -1070,13 +1083,30 @@
           }
       }, [isLoggedIn, page, activeTabId]); // 加入 activeTabId 確保監聽器能更新正確的 tab
       // --- 🔼 [新增] --------------------------
-      // --- 🔽 [新增] 自動聚焦效果 ---
-      useEffect(() => {
-          if (isWaitingForInput && terminalInputRef.current) {
-              terminalInputRef.current.focus();
-          }
-      }, [isWaitingForInput]); // 當 isWaitingForInput 變化時觸發
-      // --- 🔼 [新增] ------------------
+// --- 🔽 [新增] 自動聚焦效果 ---
+	      useEffect(() => {
+	          if (isWaitingForInput && terminalOutputRef.current) {
+	              const outputDiv = terminalOutputRef.current;
+		              outputDiv.focus();
+		              const range = document.createRange();
+		              const sel = window.getSelection();
+			              // 確保有內容可以定位
+			              if (outputDiv.lastChild) {
+			                  // 嘗試將游標定位到最後一個子節點的末尾
+			                  range.setStartAfter(outputDiv.lastChild);
+			                  range.collapse(true);
+			                  sel.removeAllRanges();
+			                  sel.addRange(range);
+			              } else {
+			                  // 如果沒有子節點，直接定位在父節點的開頭
+			                  range.setStart(outputDiv, 0);
+			                  range.collapse(true);
+			                  sel.removeAllRanges();
+			                  sel.addRange(range);
+			              }
+	          }
+	      }, [isWaitingForInput, activeTab?.output]); // 當 isWaitingForInput 變化時觸發
+	      // --- 🔼 [新增] ------------------
 
       const showMessageModal = (msg) => {
         setMessage(msg);
@@ -1168,22 +1198,7 @@
         }
       };
       
-      const handleCodeKeyDown = (cm, event, tabId) => {
-          // [修改] cm 現在是第一個參數，不再需要從 event.target 獲取
-          if (!cm) return; 
-
-          const key = event.key;
-
-          if (key === 'Tab') {
-              event.preventDefault();
-              cm.execCommand("indentMore"); // 使用 CodeMirror 內建縮排
-          } else if (key === 'Enter') {
-              event.preventDefault();
-              cm.execCommand("newlineAndIndent"); // 使用 CodeMirror 內建換行與縮排
-          }
-
-          // 我們不再需要手動處理括號，因為插件 (autoCloseBrackets) 會自動完成
-      };
+// 舊的 handleCodeKeyDown 已經被新的 useCallback 版本取代，這裡不需要保留。
 
       // --- 🔼 [修改] -----------------------------------------
 
@@ -1338,44 +1353,70 @@
           // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
       };
       // --- 🔽 [新增] 停止程式碼執行的函數 ---
-      const handleStopCode = () => {
-          // 確保 socket 存在，且有程式正在執行中
-          if (!socket || !isExecuting) return; 
+      const handleStopCode = () => {
+          // 確保 socket 存在，且有程式正在執行中
+          if (!socket || !isExecuting) return; 
 
-          console.log("[Socket.IO] 正在發送 'stop_code' 事件...");
-          // 向後端發送 'stop_code' 事件
-          socket.emit('stop_code');
-          
-          // 注意：我們「不要」在這裡設定 setIsExecuting(false)
-          // 我們應該等待後端回傳 'terminal_exit' 事件，
-          // 這樣狀態才會 100% 同步
-      };
-      // --- 🔼 [新增] --------------------------
+          console.log("[Socket.IO] 正在發送 'stop_code' 事件...");
+          // 向後端發送 'stop_code' 事件
+          socket.emit('stop_code');
+          
+          // 注意：我們「不要」在這裡設定 setIsExecuting(false)
+          // 我們應該等待後端回傳 'terminal_exit' 事件，
+          // 這樣狀態才會 100% 同步
+      };
+      // --- 🔼 [新增] --------------------------
 
       // --- 🔽 [修改] 處理終端機輸入 (加入輸入回顯) ---
-      const handleTerminalInput = (event) => {
-        if (event.key === 'Enter' && socket && isExecuting) {
-            event.preventDefault(); // 避免預設行為
-            const input = event.target.value;
-            
-            // 1. 立刻將輸入內容回顯到 output 狀態
-            setTabs(prevTabs => prevTabs.map(t => {
-                if (t.id === activeTabId && t.type === 'code') {
-                    // 將輸入的文字和一個換行符附加到現有 output
-                    const currentOutput = t.output === '執行中...' ? '' : t.output;
-                    return { ...t, output: currentOutput + input + '\n' }; 
-                }
-                return t;
-            }));
+	    const handleTerminalInput = useCallback((input) => {
+	        if (!socket || !isExecuting || !isWaitingForInput) return;
+	
+	        console.log(`[Socket.IO] 正在發送終端機輸入: ${input.trim()}`);
+	        // 1. 發送輸入到後端
+	        socket.emit('terminal_input', input);
+	
+	        // 2. 清空輸入框並取消等待狀態
+	        setIsWaitingForInput(false);
+	
+	        // 3. 將輸入內容回顯到輸出區
+	        // 由於我們使用 contenteditable，回顯邏輯需要調整
+	        // 這裡我們只發送，並讓後續的輸出事件來處理回顯
+	        // 為了確保使用者輸入的內容能被看到，我們將其作為一個臨時輸出
+	        setTabs(prevTabs => prevTabs.map(t => {
+	            if (t.id === activeTabId && t.type === 'code') {
+	                // 確保回顯的內容是使用者輸入的內容
+	                // 由於 contenteditable 已經包含了使用者輸入的文字，這裡只需要確保狀態同步
+	                // 我們將輸入的內容附加到 output 中，並在末尾加上換行
+	                return { ...t, output: t.output + input.trim() + '\n' };
+	            }
+	            return t;
+	        }));
+	        
+	        // 由於 contenteditable 的特性，我們需要手動將其設為不可編輯
+	        // 否則使用者可以繼續輸入
+	        if (terminalOutputRef.current) {
+	            terminalOutputRef.current.contentEditable = 'false';
+	        }
+	    }, [socket, isExecuting, isWaitingForInput, activeTabId, terminalOutputRef]); // 修正依賴
 
-            // 2. 將輸入發送到後端
-            socket.emit('terminal_input', input); 
-            
-            // 3. 清空輸入框
-            event.target.value = ''; 
-        }
-      };
-      // --- 🔼 [修改] --------------------
+    // 處理 Shift+Enter 執行程式碼
+    const handleCodeKeyDown = useCallback((cm, event, tabId) => {
+        // 檢查是否為 Shift + Enter
+        if (event.shiftKey && event.key === 'Enter') {
+            event.preventDefault(); // 阻止 CodeMirror 預設的換行行為
+            // 呼叫 handleRunCode
+            // 注意：這裡需要確保 handleRunCode 能夠正確執行，
+            // 由於 handleRunCode 依賴 activeTabId，我們需要確保它在 scope 內
+            // 由於 handleRunCode 已經被 useCallback 包裹，我們可以直接呼叫它
+            handleRunCode(tabId); 
+            return true; // 告訴 CodeMirror 已經處理了這個事件
+        }
+        return false;
+    }, [handleRunCode]); // 依賴 handleRunCode
+
+    // --- 🔼 [新增] Shift+Enter 處理 ---
+// 舊的 handleTerminalInput 已經被新的 useCallback 版本取代，這裡不需要保留。
+      // --- 🔼 [修改] --------------------
       
       const handleRemoveTab = (id) => {
         const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
@@ -1428,97 +1469,97 @@
         }
       };
       // [新] 打開測驗時，重置所有狀態
-      const handleOpenQuiz = (quizModule) => {
-          setCurrentQuiz(quizModule);
-          setCurrentQuestionIndex(0); // 從第一題開始
-          setSelectedAnswer(null);
-          setCurrentFeedback(null);
-          setIsQuizComplete(false);
-          setIsQuizModalOpen(true);
-      };
+      const handleOpenQuiz = (quizModule) => {
+          setCurrentQuiz(quizModule);
+          setCurrentQuestionIndex(0); // 從第一題開始
+          setSelectedAnswer(null);
+          setCurrentFeedback(null);
+          setIsQuizComplete(false);
+          setIsQuizModalOpen(true);
+      };
 
-      // [新] 提交「當前」問題的答案
-      const handleSubmitAnswer = async () => {
-          if (!selectedAnswer || !currentQuiz) return;
+      // [新] 提交「當前」問題的答案
+      const handleSubmitAnswer = async () => {
+          if (!selectedAnswer || !currentQuiz) return;
 
-          const currentStudentId = localStorage.getItem('studentId');
-          const question = currentQuiz.questions[currentQuestionIndex];
-          const isCorrect = (selectedAnswer === question.answer);
-          // [FIX] 立即檢查是否為最後一題
-          const isLastQuestion = (currentQuestionIndex === currentQuiz.questions.length - 1); 
+          const currentStudentId = localStorage.getItem('studentId');
+          const question = currentQuiz.questions[currentQuestionIndex];
+          const isCorrect = (selectedAnswer === question.answer);
+          // [FIX] 立即檢查是否為最後一題
+          const isLastQuestion = (currentQuestionIndex === currentQuiz.questions.length - 1); 
 
-          // 1. 顯示即時回饋
-          setCurrentFeedback(isCorrect ? "答對了！" : `答錯了，正確答案是: ${question.answer}`);
+          // 1. 顯示即時回饋
+          setCurrentFeedback(isCorrect ? "答對了！" : `答錯了，正確答案是: ${question.answer}`);
 
-          // 2. [FIX] 如果是最後一題，立即設定為完成狀態 (在 API 呼叫前)
-          // 這樣就不會短暫顯示 "下一題" 按鈕
-          if (isLastQuestion) {
-              setIsQuizComplete(true);
-          }
+          // 2. [FIX] 如果是最後一題，立即設定為完成狀態 (在 API 呼叫前)
+          // 這樣就不會短暫顯示 "下一題" 按鈕
+          if (isLastQuestion) {
+              setIsQuizComplete(true);
+          }
 
-          // 3. 準備 payload
-          const payload = {
-              studentId: currentStudentId,
-              quizId: currentQuiz.id.toString(),
-              questionId: question.id,
-              answer: selectedAnswer,
-              isCorrect: isCorrect
-          };
+          // 3. 準備 payload
+          const payload = {
+              studentId: currentStudentId,
+              quizId: currentQuiz.id.toString(),
+              questionId: question.id,
+              answer: selectedAnswer,
+              isCorrect: isCorrect
+          };
 
-          // 4. 呼叫後端 API 儲存這筆作答 (非同步執行)
-          try {
-              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz/attempt', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
-              });
-              if (!res.ok) throw new Error("儲存答案失敗");
-              
-              const data = await res.json();
-              setQuizProgress(data.newProgress.quizzes || quizProgress); 
+          // 4. 呼叫後端 API 儲存這筆作答 (非同步執行)
+          try {
+              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz/attempt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+              });
+              if (!res.ok) throw new Error("儲存答案失敗");
+              
+              const data = await res.json();
+              setQuizProgress(data.newProgress.quizzes || quizProgress); 
 
-          } catch (error) {
-              console.error("儲存測驗 API 失敗:", error);
-              showMessageModal(`儲存作答紀錄失敗: ${error.message}`);
-          }
-      };
+          } catch (error) {
+              console.error("儲存測驗 API 失敗:", error);
+              showMessageModal(`儲存作答紀錄失敗: ${error.message}`);
+          }
+      };
 
-      // [新] 換到下一題
-      const handleNextQuestion = () => {
-          // 重設狀態
-          setSelectedAnswer(null);
-          setCurrentFeedback(null); // <-- [FIX] 清除上一題的回饋
-          setCurrentQuestionIndex(prev => prev + 1);
-      };
+      // [新] 換到下一題
+      const handleNextQuestion = () => {
+          // 重設狀態
+          setSelectedAnswer(null);
+          setCurrentFeedback(null); // <-- [FIX] 清除上一題的回饋
+          setCurrentQuestionIndex(prev => prev + 1);
+      };
 
-      // --- 🔽 [新增] 儲存測驗進度到資料庫 ---
-      const saveQuizProgressToDB = async (newProgress) => {
-          // 從 localStorage 獲取當前 studentId，在 helper 函數中這比依賴 state 更穩定
-          const currentStudentId = localStorage.getItem('studentId');
-          if (!currentStudentId) {
-              console.error("無法儲存測驗進度：找不到 studentId");
-              return;
-          }
+      // --- 🔽 [新增] 儲存測驗進度到資料庫 ---
+      const saveQuizProgressToDB = async (newProgress) => {
+          // 從 localStorage 獲取當前 studentId，在 helper 函數中這比依賴 state 更穩定
+          const currentStudentId = localStorage.getItem('studentId');
+          if (!currentStudentId) {
+              console.error("無法儲存測驗進度：找不到 studentId");
+              return;
+          }
 
-          try {
-              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      studentId: currentStudentId,
-                      progress: newProgress
-                  })
-              });
-              if (!res.ok) {
-                  console.error("儲存測驗進度到 DB 失敗");
-              }
-          } catch (error) {
-              console.error("儲存測驗進度 API 請求失敗:", error);
-          }
-      };
-      // --- 🔼 [新增] --------------------------
+          try {
+              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      studentId: currentStudentId,
+                      progress: newProgress
+                  })
+              });
+              if (!res.ok) {
+                  console.error("儲存測驗進度到 DB 失敗");
+              }
+          } catch (error) {
+              console.error("儲存測驗進度 API 請求失敗:", error);
+          }
+      };
+      // --- 🔼 [新增] --------------------------
 
-      const renderQuizModal = () => {
+      const renderQuizModal = () => {
         if (!isQuizModalOpen || !currentQuiz) return null;
 
         // 從 state 中取得當前題目
@@ -1685,9 +1726,7 @@
           </div>
       )};
       
-      const renderLearningContent = () => {
-        const activeTab = tabs.find(tab => tab.id === activeTabId);
-        
+      const renderLearningContent = () => {        
         return (
           <div className="split-container p-2 gap-2 bg-slate-950">
             {/* 左側區塊 */}
@@ -1781,7 +1820,7 @@
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
                               <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
-                                  <div className="flex justify-start items-center gap-2 mb-2">
+                                  <div className="flex justify-start items-center gap-2 mb-2">
                                     <button
                                       onClick={() => handleRunCode(activeTab.id)}
                                       disabled={!activeTab || isExecuting}
@@ -1806,43 +1845,62 @@
                                     </button>
                                   </div>
                                   {/* 輸出/錯誤顯示區 */}
-                                  <div className="flex-1 text-sm space-y-2">
-                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
-                                      {(activeTab.output || activeTab.error) && (
-                                          <div>
-                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
-                                                  {activeTab.error ? '錯誤:' : '輸出:'}
-                                              </strong>
-                                              {/* 使用 pre 標籤顯示，保留換行和空格 */}
-                                              <pre className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}>
-                                                  <code>{activeTab.output || activeTab.error}</code>
-                                              </pre>
-                                          </div>
-                                      )}
-                                      {/* --- 🔼 [修改] -------------------- */}
-                                  </div>
-                                    {/* --- 🔽 [新增] 終端機輸入框 --- */}
-                                    {isExecuting && (
-                                      <div className="mt-auto pt-2 flex-shrink-0">
-                                        <input
-                                          ref={terminalInputRef}
-                                          type="text"
-                                          placeholder="請在此輸入"
-                                          className="w-full p-2 bg-slate-800 border border-slate-600 text-slate-200 text-sm font-mono rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 placeholder-slate-500"
-                                          disabled={!isWaitingForInput}
-                                          onCompositionStart={() => isComposing.current = true}   // ← 開始輸入中文
-                                          onCompositionEnd={() => isComposing.current = false}    // ← 結束輸入中文
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !isComposing.current) {      // ← 只有非組字時才送出
-                                              e.preventDefault();
-                                              handleTerminalInput(e);
-                                            }
-                                          }}
-                                        />
-                                      </div>
-                                    )}
-                                    {/* --- 🔼 [新增] -------------------- */}
-                              </div>
+                                  <div className="flex-1 text-sm space-y-2 overflow-y-auto">
+	                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
+	                                      {(activeTab.output || activeTab.error) && (
+	                                          <div>
+		                                      <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+		                                                  {activeTab.error ? '錯誤:' : '輸出:'}
+		                                              </strong>
+		                                              {/* --- 🔽 [重構] 輸出區塊改為 contenteditable 實現行內輸入 --- */}
+		                                              <div 
+		                                                  ref={terminalOutputRef} // 新增 ref
+		                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
+		                                                  contentEditable={isExecuting && isWaitingForInput && !activeTab.error} // 只有在等待輸入時才可編輯
+		                                                  suppressContentEditableWarning={true}
+		                                                  onKeyDown={(e) => {
+		                                                      if (e.key === 'Enter' && isExecuting && isWaitingForInput && !isComposing.current) {
+		                                                          e.preventDefault();
+			                                                          // 獲取輸入內容
+			                                                          const outputDiv = terminalOutputRef.current;
+			                                                          const fullText = outputDiv.innerText;
+			                                                          
+			                                                          // 1. 獲取提示詞
+			                                                          const promptText = activeTab.output.split('\n').pop().trim();
+			                                                          
+			                                                          // 2. 獲取使用者輸入部分
+			                                                          // 這裡假設使用者輸入的內容是 fullText 中，activeTab.output 之後的部分
+			                                                          // 由於 contenteditable 會將所有內容視為一個整體，我們需要從 fullText 中減去原始輸出
+			                                                          // 為了簡化，我們只取最後一行，並移除提示詞
+			                                                          const lines = fullText.split('\n');
+			                                                          const lastLine = lines[lines.length - 1];
+			                                                          let userInput = lastLine;
+			                                                          
+			                                                          if (lastLine.startsWith(promptText)) {
+			                                                              userInput = lastLine.substring(promptText.length).trim();
+			                                                          }
+			                                                          
+			                                                          // 3. 發送輸入
+			                                                          handleTerminalInput(userInput + '\n');
+			                                                          
+			                                                          // 4. 清除 contenteditable 內容 (由 handleTerminalInput 處理回顯)
+			                                                          // 由於我們在 handleTerminalInput 中處理了回顯，這裡不需要額外處理
+			                                                          // 關鍵是確保 handleTerminalInput 執行後，contentEditable 被設為 false
+		                                                      }
+		                                                  }}
+		                                              >
+		                                                  {/* 顯示輸出內容 */}
+		                                                  {activeTab.output || activeTab.error}
+		                                              </div>
+		                                              {/* --- 🔼 [重構] -------------------- */}
+		                                          </div>
+		                                      )}
+		                                      {/* --- 🔼 [修改] -------------------- */}
+		                                  </div>
+			                                    {/* --- 🔽 [移除] 終端機輸入框 ---*/}
+			                                    {/* 獨立輸入框已移除，功能整合到 contentEditable 區塊 */}
+			                                    {/* --- 🔼 [移除] -------------------- */}
+			                              </div>
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
