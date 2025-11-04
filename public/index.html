@@ -1741,7 +1741,7 @@
                         <p className="text-slate-300 mb-8">{currentModule.content}</p>
                         <button 
                           onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-700 transition-all"
+                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-lg shadow-teal-500/50 hover:border-teal-400 hover:text-teal-300 hover:shadow-xl hover:shadow-teal-400/75"
                         >
                           {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
                         </button>
@@ -1965,7 +1965,7 @@
                                               >
                                                 <span>{submodule.title}</span>
                                                 {submodule.type === 'quiz' && quizProgress[submodule.id] && (
-                                                  <span title="已作答" className="text-red-500">✓</span>
+                                                  <span title="已作答" className="text-red-600">✓</span>
                                                 )}
                                               </div>
                                             ))}
