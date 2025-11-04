@@ -1741,7 +1741,7 @@
                         <p className="text-slate-300 mb-8">{currentModule.content}</p>
                         <button 
                           onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-lg shadow-teal-500/50 hover:border-teal-400 hover:text-teal-300 hover:shadow-xl hover:shadow-teal-400/75"
+                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
                         >
                           {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
                         </button>
@@ -1857,7 +1857,8 @@
 		                                                  ref={terminalOutputRef} // 新增 ref
 		                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
 		                                                  contentEditable={isExecuting && isWaitingForInput && !activeTab.error} // 只有在等待輸入時才可編輯
-		                                                  suppressContentEditableWarning={true}
+		                                                  suppressContentEditableWarning={true} onCompositionStart={() => isComposing.current = true}
+                                                      onCompositionEnd={() => isComposing.current = false}
 		                                                  onKeyDown={(e) => {
 		                                                      if (e.key === 'Enter' && isExecuting && isWaitingForInput && !isComposing.current) {
 		                                                          e.preventDefault();
@@ -1961,11 +1962,12 @@
                                               <div 
                                                 key={submodule.id} 
                                                 onClick={() => handleModuleSelect(submodule)} 
-                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-600 font-semibold text-white' : 'hover:bg-slate-800'}`}
+                                                // [修改後] 方案一：淡色背景
+                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-500/20 text-teal-300 font-semibold' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
                                               >
                                                 <span>{submodule.title}</span>
                                                 {submodule.type === 'quiz' && quizProgress[submodule.id] && (
-                                                  <span title="已作答" className="text-red-600">✓</span>
+                                                  <span title="已作答" className="text-red-500">✓</span>
                                                 )}
                                               </div>
                                             ))}
