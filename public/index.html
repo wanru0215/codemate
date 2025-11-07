@@ -8,6 +8,10 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/theme/dracula.css">
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/python/python.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/javascript/javascript.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/css/css.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/xml/xml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/htmlmixed/htmlmixed.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/closebrackets.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/matchbrackets.js"></script>
@@ -121,6 +125,25 @@
 
 <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
+    const FILE_MODE_MAP = {
+        'py': 'python',
+        'js': 'javascript',
+        'json': { name: 'javascript', json: true },
+        'css': 'css',
+        'html': 'htmlmixed',
+        'htm': 'htmlmixed',
+        'xml': 'xml',
+        'md': 'markdown',
+        'txt': 'text/plain',
+    };
+
+    // 輔助函數：從檔名取得 CodeMirror mode
+    const getCodeMirrorMode = (fileName) => {
+        if (!fileName) return 'text/plain';
+        const parts = fileName.split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        return FILE_MODE_MAP[ext] || 'text/plain';
+    };
     const { createRoot } = ReactDOM;
     
     marked.setOptions({
@@ -163,33 +186,30 @@
       // --- [修改] Effect 1: 初始化與銷毀 (只執行一次) ---
       React.useEffect(() => {
           if (editorRef.current && !cmInstance.current) {
-              cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
-                  mode: "python",
-                  theme: "dracula",
+                  // 根據 activeTab 的檔名動態設定 mode
+                  const mode = activeTab?.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
+
+                  cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
+                      mode: mode,
+                      theme: "dracula",
                   lineNumbers: true,
                   indentUnit: 4,
                   tabSize: 4,
+                  // *** [新增] 縮排優化設定 ***
+                  indentWithTabs: false, // 確保縮排使用空格而不是 Tab 字符
+                  smartIndent: true,     // 啟用智慧縮排，有助於 Backspace 一次刪除一個縮排
+                  extraKeys: {           // 配置 Tab 鍵行為
+                      Tab: function(cm) {
+                          // 插入 tabSize 數量的空格
+                          var spaces = Array(cm.getOption("indentUnit") + 1).join(" ");
+                          cm.replaceSelection(spaces);
+                      }
+                  },
+                  // *** [新增結束] ***
                   // --- [新增] 啟用插件 (見步驟 2 & 3) ---
                   autoCloseBrackets: true,
                   matchBrackets: true
                   // --- [新增結束] ---
-              });
-
-              // 同步變化 (使用 Ref)
-              cmInstance.current.on("change", (cm) => {
-                  // 確保 activeTab 存在才呼叫
-                  // (我們需要 activeTab.id，所以不能只用 Ref)
-                  if(activeTab) {
-                      onChangeRef.current(activeTab.id, cm.getValue());
-                  }
-              });
-
-              // 添加鍵盤事件監聽 (使用 Ref)
-              cmInstance.current.on("keydown", (cm, event) => {
-                  if (activeTab) {
-                      // [修改] 我們把 cm 實例也傳遞過去
-                      onKeyDownRef.current(cm, event, activeTab.id);
-                  }
               });
           }
 
@@ -203,15 +223,83 @@
       }, []); // <-- [關鍵] 空依賴陣列，確保只執行一次
       // --- [修改結束] ---
 
-      // --- [新增] Effect 2: 同步內容 (當 activeTab 改變時) ---
+      // --- [新增] Effect 1.5: 重新綁定事件監聽器 (當 activeTab 改變時) ---
+      React.useEffect(() => {
+          if (cmInstance.current) {
+              // 1. 清理舊的監聽器 (如果有的話，雖然 CodeMirror 的 on/off 處理得很好，但明確清理是好習慣)
+              // 由於我們無法輕易存取舊的匿名函數，我們只能依賴 CodeMirror 的內部機制。
+              // 更好的做法是確保我們傳遞給 on 的函數是穩定的，或者在每次 activeTab 改變時重新綁定。
+              
+              // 為了確保 change 事件能拿到最新的 activeTab.id，我們必須在 activeTab 改變時重新綁定。
+              // 由於我們在 Effect 1 中沒有綁定，我們在這裡綁定並在清理函數中移除。
+              
+              // 為了避免重複綁定，我們使用一個 Ref 來儲存監聽器函數
+              const changeHandler = (cm) => {
+                  if (activeTab) {
+                      onChangeRef.current(activeTab.id, cm.getValue());
+                  }
+              };
+              
+              const keydownHandler = (cm, event) => {
+                  if (activeTab) {
+                      onKeyDownRef.current(cm, event, activeTab.id);
+                  }
+              };
+              
+              // 移除舊的監聽器 (如果存在)
+              cmInstance.current.off("change", cmInstance.current.__changeHandler);
+              cmInstance.current.off("keydown", cmInstance.current.__keydownHandler);
+              
+              // 綁定新的監聽器
+              cmInstance.current.on("change", changeHandler);
+              cmInstance.current.on("keydown", keydownHandler);
+              
+              // 儲存新的監聽器函數，以便下次清理
+              cmInstance.current.__changeHandler = changeHandler;
+              cmInstance.current.__keydownHandler = keydownHandler;
+              
+              // 清理函數：當 activeTab 改變或組件卸載時，移除監聽器
+              return () => {
+                  if (cmInstance.current) {
+                      cmInstance.current.off("change", changeHandler);
+                      cmInstance.current.off("keydown", keydownHandler);
+                  }
+              };
+          }
+      }, [activeTab, onChangeRef, onKeyDownRef]); // 依賴 activeTab 確保切換時重新綁定
+      // --- [新增] Effect 3: 確保 mode 在 activeTab 切換時更新 ---
+      React.useEffect(() => {
+          if (cmInstance.current && activeTab) {
+              const newMode = activeTab.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
+              const currentMode = cmInstance.current.getOption("mode");
+              
+              // 只有在 mode 確實改變時才更新
+              if (JSON.stringify(newMode) !== JSON.stringify(currentMode)) {
+                  cmInstance.current.setOption("mode", newMode);
+              }
+          }
+      }, [activeTab]);
+      // --- [新增結束] ---
+      // --- [新增結束] ---
+
+      // --- [修改] Effect 2: 同步內容 (當 activeTab 改變時) ---
       React.useEffect(() => {
           if (cmInstance.current) {
               const currentVal = cmInstance.current.getValue();
 
+              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
               if (activeTab && activeTab.content !== currentVal) {
                   // 儲存目前游標位置
                   const cursor = cmInstance.current.getCursor();
+                  
+                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
+                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
+                  cmInstance.current.off("change", cmInstance.current.__changeHandler);
+                  
                   cmInstance.current.setValue(activeTab.content);
+                  
+                  // 重新開啟 change 事件
+                  cmInstance.current.on("change", cmInstance.current.__changeHandler);
                   
                   // 嘗試恢復游標位置 (如果行數還存在)
                   try {
@@ -229,7 +317,44 @@
               }
           }
       }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
-      // --- [新增結束] ---
+      // --- [修改結束] ---
+
+      // --- [新增] Effect 2: 同步內容 (當 activeTab 改變時) ---
+      React.useEffect(() => {
+          if (cmInstance.current) {
+              const currentVal = cmInstance.current.getValue();
+
+              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
+              if (activeTab && activeTab.content !== currentVal) {
+                  // 儲存目前游標位置
+                  const cursor = cmInstance.current.getCursor();
+                  
+                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
+                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
+                  cmInstance.current.off("change", cmInstance.current.__changeHandler);
+                  
+                  cmInstance.current.setValue(activeTab.content);
+                  
+                  // 重新開啟 change 事件
+                  cmInstance.current.on("change", cmInstance.current.__changeHandler);
+                  
+                  // 嘗試恢復游標位置 (如果行數還存在)
+                  try {
+                      cmInstance.current.setCursor(cursor);
+                  } catch (e) {
+                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
+                  }
+                  
+                  // 確保編輯器獲得焦點
+                  setTimeout(() => cmInstance.current.focus(), 0);
+
+              } else if (!activeTab && currentVal !== '') {
+                  // 如果沒有 activeTab，清空編輯器
+                  cmInstance.current.setValue('');
+              }
+          }
+      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
+      // --- [修改結束] ---
 
       return (
           // 我們仍然需要 textarea 作為 CodeMirror 的基礎
@@ -1737,7 +1862,7 @@
                     {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
                     {currentModule?.type === 'quiz' && (
                       <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                        <h2 className="text-2xl font-bold text-teal-400 mb-4">{currentModule.title}</h2>
+                        <h2 className="text-2xl font-bold text-teal-300 mb-4">{currentModule.title}</h2>
                         <p className="text-slate-300 mb-8">{currentModule.content}</p>
                         <button 
                           onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
