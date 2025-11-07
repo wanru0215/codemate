@@ -198,12 +198,31 @@
                   // *** [新增] 縮排優化設定 ***
                   indentWithTabs: false, // 確保縮排使用空格而不是 Tab 字符
                   smartIndent: true,     // 啟用智慧縮排，有助於 Backspace 一次刪除一個縮排
-                  extraKeys: {           // 配置 Tab 鍵行為
-                      Tab: function(cm) {
-                          // 插入 tabSize 數量的空格
-                          var spaces = Array(cm.getOption("indentUnit") + 1).join(" ");
-                          cm.replaceSelection(spaces);
+                  extraKeys: {
+                    Tab: function(cm) {
+                      if (cm.somethingSelected()) {
+                        cm.indentSelection("add");
+                      } else {
+                        cm.replaceSelection("    ", "end"); // 插入 4 個空格
                       }
+                    },
+                    Backspace: function(cm) {
+                      const spacesPerIndent = cm.getOption("indentUnit");
+                      const cursor = cm.getCursor();
+                      const line = cm.getLine(cursor.line);
+                      const beforeCursor = line.slice(0, cursor.ch);
+
+                      // 如果游標前面全是空白且長度是縮排倍數，則一次刪掉一層縮排
+                      if (/^\s+$/.test(beforeCursor) && (beforeCursor.length % spacesPerIndent === 0)) {
+                        cm.replaceRange(
+                          "",
+                          { line: cursor.line, ch: cursor.ch - spacesPerIndent },
+                          { line: cursor.line, ch: cursor.ch }
+                        );
+                      } else {
+                        cm.execCommand("delCharBefore");
+                      }
+                    }
                   },
                   // *** [新增結束] ***
                   // --- [新增] 啟用插件 (見步驟 2 & 3) ---
