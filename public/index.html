@@ -1,2169 +1,424 @@
-<!DOCTYPE html>
-<html lang="zh-Hant" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeMate 學習平台</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/theme/dracula.css">
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/lib/codemirror.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/python/python.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/javascript/javascript.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/css/css.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/xml/xml.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/mode/htmlmixed/htmlmixed.js"></script>
+// 1. 引入需要的模組
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const { spawn } = require('child_process');
+const path = require("path");
+const fetch = require("node-fetch");
+const http = require('http');
+const { Server } = require("socket.io");
 
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/closebrackets.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.14/addon/edit/matchbrackets.js"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+// 2. 初始化 Express 應用
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// 3. 設定中間件 (Middleware)
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// --- 資料庫連線 ---
+const mongoURI = process.env.MONGO_URI || 'mongodb+srv://user:WXXrWGcC9Z0LiYT3@cluster0.t2r6dop.mongodb.net/SCU?retryWrites=true&w=majority';
+
+mongoose.connect(mongoURI)
+  .then(() => console.log('成功連接到 MongoDB (SCU 資料庫)'))
+  .catch(err => console.error('無法連接到 MongoDB:', err));
+
+// --- Mongoose Schema & Model ---
+
+// 學生帳號 Schema (保持不變)
+const studentSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  password: { type: String, required: true },
+  registrationTime: { type: Date, default: Date.now },
+  lastLoginTime: { type: Date }
+});
+const Student = mongoose.model('Student', studentSchema, 'Students');
+
+// 對話紀錄 Schema (保持不變)
+const messageSchema = new mongoose.Schema({
+  id: { type: Number, required: true },
+  sender: { type: String, required: true },
+  content: { type: String, required: true },
+  timestamp: { type: Date, required: true }
+}, { _id: false });
+const learningRecordSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, index: true },
+  conversation: [messageSchema],
+  lastUpdated: { type: Date, default: Date.now }
+});
+const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
+
+// 扁平化的測驗紀錄 Schema (保持不變)
+const quizAttemptSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, index: true },
+  quizId: { type: String, required: true, index: true },
+  questionId: { type: String, required: true },
+  answer: { type: String, required: true },
+  isCorrect: { type: Boolean, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+const QuizAttempt = mongoose.model('QuizAttempt', quizAttemptSchema, 'QuizAttempts');
+
+// 後端輔助函數 (保持不變)
+const reconstructProgress = (allAttempts) => {
+  const quizzes = {}; 
+  for (const attempt of allAttempts) {
+    const { quizId, questionId, isCorrect, timestamp, answer } = attempt;
+    if (!quizzes[quizId]) {
+      quizzes[quizId] = {
+        quizId: quizId,
+        lastAttempted: new Date(0), 
+        questions: {} 
+      };
+    }
+    if (!quizzes[quizId].questions[questionId]) {
+      quizzes[quizId].questions[questionId] = {
+        questionId: questionId,
+        correctCount: 0,
+        incorrectCount: 0,
+        attempts: []
+      };
+    }
+    const quizProgress = quizzes[quizId];
+    const questionProgress = quizzes[quizId].questions[questionId];
+    questionProgress.attempts.push({ answer, isCorrect, timestamp });
+    if (isCorrect) {
+      questionProgress.correctCount += 1;
+    } else {
+      questionProgress.incorrectCount += 1;
+    }
+    if (timestamp > quizProgress.lastAttempted) {
+      quizProgress.lastAttempted = timestamp;
+    }
+  }
+  return quizzes; 
+};
+// --- API 路由 (Routes) ---
+
+// 註冊 API: /api/register (保持不變)
+app.post('/api/register', async (req, res) => {
+  try {
+    const { studentId, name, password } = req.body;
+    if (!studentId || !name || !password) {
+      return res.status(400).json({ message: '所有欄位均為必填' });
+    }
+    const existingStudent = await Student.findOne({ studentId });
+    if (existingStudent) {
+      return res.status(409).json({ message: '此學號已被註冊' });
+    }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    const newStudent = new Student({ studentId, name, password: hashedPassword });
+    await newStudent.save();
+    res.status(201).json({ message: '註冊成功' });
+  } catch (error) {
+    console.error('註冊錯誤:', error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+
+// 登入 API: /api/login (保持不變)
+app.post('/api/login', async (req, res) => {
+  try {
+    const { studentId, password } = req.body;
+    if (!studentId || !password) {
+      return res.status(400).json({ message: '學號和密碼為必填' });
+    }
+    const student = await Student.findOne({ studentId });
+    if (!student) {
+      return res.status(401).json({ message: '學號或密碼錯誤' });
+    }
+    const isMatch = await bcrypt.compare(password, student.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: '學號或密碼錯誤' });
+    }
+    student.lastLoginTime = new Date();
+    await student.save();
+    res.status(200).json({ message: '登入成功', name: student.name });
+  } catch (error) {
+    console.error('登入錯誤:', error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+
+// Gemini API 代理 (保持不變)
+app.post("/api/chat", async (req, res) => {
+  console.log("1. [API Chat] 收到前端個人化請求...");
+
+  try {
+    const { contents, systemInstruction, studentId } = req.body;
+
+    if (!studentId || !contents) {
+        return res.status(400).json({ error: { message: "請求中缺少 studentId 或 contents" } });
+    }
+
+    // --- 步驟 1: 從 MongoDB 讀取歷史對話作為風格範例 ---
+    const record = await LearningRecord.findOne({ studentId });
+    const fullHistory = record?.conversation || [];
+    const fewShotExamples = [];
+    if (fullHistory.length > 1) {
+        console.log(`2. [API Chat] 找到學生 ${studentId} 的歷史紀錄，正在準備風格範例...`);
+        let pairsFound = 0;
+        for (let i = fullHistory.length - 1; i > 0 && pairsFound < 2; i--) {
+            if (fullHistory[i].sender === 'user' && fullHistory[i-1].sender === 'ai') {
+                fewShotExamples.unshift({ role: 'model', parts: [{ text: fullHistory[i-1].content }] });
+                fewShotExamples.unshift({ role: 'user', parts: [{ text: fullHistory[i].content }] });
+                pairsFound++;
+            }
+        }
+    }
+
+    // --- 步驟 2: 組合最終的提示 (Prompt) ---
+    const finalContents = [
+        ...fewShotExamples,
+        ...contents
+    ];
+    
+    const finalPayload = {
+        contents: finalContents,
+        systemInstruction: systemInstruction
+    };
+
+    // --- 步驟 3: 呼叫 Gemini API ---
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: { message: "伺服器缺少 GEMINI_API_KEY" } });
+    }
+    const modelName = "gemini-2.5-flash-preview-05-20";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+    console.log(`3. [API Chat] 正在將包含 ${finalContents.length} 則訊息的組合提示發送至 Gemini...`);
+
+    const geminiResponse = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(finalPayload),
+    });
+    
+    const data = await geminiResponse.json();
+
+    if (!geminiResponse.ok) {
+        console.error("4. [API Chat] Gemini API 錯誤:", JSON.stringify(data, null, 2));
+        return res.status(geminiResponse.status).json(data);
+    }
+    
+    console.log("5. [API Chat] 收到 Gemini 回應，準備回傳前端。");
+    res.json(data);
+
+  } catch (err) {
+    console.error("6. [API Chat] 代理請求過程中發生嚴重錯誤:", err);
+    res.status(500).json({ error: { message: "伺服器內部錯誤，無法呼叫 Gemini API" } });
+  }
+});
+
+// 儲存對話紀錄 API (保持不變)
+app.post('/api/log/conversation', async (req, res) => {
+  try {
+    const { studentId, conversation } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ message: "儲存失敗：請求中缺少學生 ID" });
+    }
+    if (!conversation || !Array.isArray(conversation)) {
+      return res.status(400).json({ message: "儲存失敗：對話內容格式不正確" });
+    }
+    await LearningRecord.findOneAndUpdate(
+      { studentId: studentId },
+      { $set: { conversation, lastUpdated: new Date() } },
+      { upsert: true, new: true }
+    );
+    res.status(200).json({ message: "對話紀錄已成功儲存" });
+  } catch (error) {
+    console.error("儲存對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤" });
+  }
+});
+
+// --- 🔽 [FIX] 這是您遺失的 API 路由！ ---
+// 取得對話紀錄 API
+app.get('/api/log/conversation/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+    const record = await LearningRecord.findOne(
+        { studentId },
+        { conversation: { $slice: -50 } } // 只取最後 50 筆
+    );
+
+    if (record && record.conversation) {
+      res.status(200).json(record.conversation);
+    } else {
+      res.status(200).json([]); // 如果沒有紀錄，回傳空陣列
+    }
+  } catch (error) {
+    console.error("讀取對話紀錄時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+// --- 🔼 [FIX] ---------------------------
+
+
+// [POST API] 提交「單一」測驗答案 (保持 v4 偵錯版本)
+app.post('/api/progress/quiz/attempt', async (req, res) => {
+  try {
+    const { studentId, quizId, questionId, answer, isCorrect } = req.body;
     
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js" defer></script>    
-    <style>
-        /* Custom styles for better layout and aesthetics */
-        html, body, #root {
-            height: 100%;
-            overflow: hidden; /* Prevent scrolling on the body */
-        }
-        .code-textarea {
-            background: #020617; /* slate-950 */
-            color: #d1d5db; /* gray-300 */
-            font-family: 'Fira Code', 'Courier New', monospace;
-            font-size: 14px;
-            border: 1px solid #1e293b; /* slate-800 */
-            border-radius: 0.375rem; /* rounded-md */
-            overflow-y: auto !important;
-            resize: none; /* Disable manual resizing */
-            padding: 10px;
-        }
-        .code-textarea:focus {
-            border-color: #14b8a6; /* teal-500 */
-            outline: none;
-        }
-        pre[class*="language-"] {
-            background: #0f172a; /* slate-900 */
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-top: 0.5rem;
-            margin-bottom: 0.5rem;
-            font-size: 0.875rem;
-            line-height: 1.5;
-            white-space: pre-wrap; /* 讓輸出可以換行 */
-            word-wrap: break-word; /* 避免長字串溢出 */
-        }
+    // --- [FIX] 更嚴格的檢查，防止 null 或 undefined ---
+    if (
+      !studentId || 
+      !quizId || 
+      !questionId || 
+      answer === null || answer === undefined || // <-- 檢查 null 和 undefined
+      isCorrect === null || isCorrect === undefined // <-- 檢查 null 和 undefined
+    ) {
+      console.error('[CodeMate 儲存失敗] 偵測到無效請求: 欄位為 null 或 undefined', req.body);
+      return res.status(400).json({ message: "缺少必要的提交欄位 (null/undefined)" });
+    }
+    // --- [FIX] ----------------------------------
 
-        /* --- 新增 split.js 拖拉分界線的樣式 --- */
-        .split-container {
-            display: flex;
-            width: 100%;
-            height: 100%;
-        }
-        .gutter {
-            background-color: #1e293b; /* slate-800 */
-            background-repeat: no-repeat;
-            background-position: 50%;
-        }
-        .gutter.gutter-horizontal {
-            cursor: col-resize;
-        }
-        .gutter.gutter-vertical {
-            cursor: row-resize;
-        }
-        /* 讓區塊在 flex 佈局下能正確縮放 */
-        #left-pane, #right-pane, #material-pane, #chat-pane {
-            overflow: hidden; /* 避免內容溢出 */
-        }
-        /* Tailwind Prose 樣式覆蓋 */
-        .prose {
-          color: inherit;
-        }
-        .prose strong {
-          color: inherit;
-        }
-        .prose p {
-          margin-top: 0;
-          margin-bottom: 0.5rem;
-          white-space: pre-wrap; /* 告訴瀏覽器保留所有空白和換行 */
-          word-wrap: break-word;
-        }
-        .CodeMirror {
-             height: 100%;
-             font-size: 14px; /* 與 textarea 統一字體大小 */
-             line-height: 1.5;
-        }
-        /* --- 新增終端機輸入框樣式 --- */
-        .terminal-input {
-            background-color: #0f172a; /* slate-900 - 與輸出區背景一致 */
-            color: #e2e8f0; /* slate-200 */
-            border: none; /* 移除邊框 */
-            /* border-bottom: 1px solid #334155; /* slate-700 - 只留底線? (可選) */
-            border-radius: 0; /* 移除圓角 */
-            padding: 0.5rem 1rem;
-            font-family: monospace;
-            width: 100%;
-            box-shadow: none; /* 移除陰影 */
-        }
-        .terminal-input:focus {
-            outline: none; /* 移除外框線 */
-            border-color: transparent; /* 聚焦時邊框透明 */
-            box-shadow: none; /* 移除聚焦陰影 */
-            /* 您可以考慮只在聚焦時顯示底線 */
-            /* border-bottom: 1px solid #14b8a6; /* teal-500 */
-        }
-    </style>
-</head>
-<body class="bg-slate-950 text-slate-300 font-sans">
+    console.log(`[CodeMate 儲存中 1/4] 收到 student ${studentId} 的作答: quizId=${quizId}, qId=${questionId}, answer=${answer}, isCorrect=${isCorrect}`);
 
-<div id="root"></div>
-
-<script type="text/babel">
-    const { useState, useEffect, useRef, useCallback } = React;
-    const FILE_MODE_MAP = {
-        'py': 'python',
-        'js': 'javascript',
-        'json': { name: 'javascript', json: true },
-        'css': 'css',
-        'html': 'htmlmixed',
-        'htm': 'htmlmixed',
-        'xml': 'xml',
-        'md': 'markdown',
-        'txt': 'text/plain',
-    };
-
-    // 輔助函數：從檔名取得 CodeMirror mode
-    const getCodeMirrorMode = (fileName) => {
-        if (!fileName) return 'text/plain';
-        const parts = fileName.split('.');
-        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
-        return FILE_MODE_MAP[ext] || 'text/plain';
-    };
-    const { createRoot } = ReactDOM;
-    
-    marked.setOptions({
-        breaks: true,
+    const newAttempt = new QuizAttempt({
+      studentId,
+      quizId,
+      questionId,
+      answer,
+      isCorrect,
+      timestamp: new Date()
     });
 
-    // A simple SVG Icon component for placeholders
-    const Icon = ({ name, className, isExpanded }) => {
-        const icons = {
-            play: <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />,
-            code: <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />,
-            book: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />,
-            send: <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />,
-            chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
-            menu: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />,
-            edit: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />,
-        };
-        const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
-        return (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`${className} transition-transform duration-200 ${rotation}`}>
-                {icons[name] || ''}
-            </svg>
-        );
-    };
-
-    function CodeMirrorEditor({ activeTab, handleTabContentChange, handleCodeKeyDown }) {
-      const editorRef = React.useRef(null);
-      const cmInstance = React.useRef(null);
-      
-      // --- [新增] 使用 Refs 來保存 props，這樣就不會觸發 useEffect 重新綁定 ---
-      const onChangeRef = React.useRef(handleTabContentChange);
-      const onKeyDownRef = React.useRef(handleCodeKeyDown);
-
-      React.useEffect(() => {
-          onChangeRef.current = handleTabContentChange;
-          onKeyDownRef.current = handleCodeKeyDown;
-      }, [handleTabContentChange, handleCodeKeyDown]);
-      // --- [新增結束] ---
-
-      // --- [修改] Effect 1: 初始化與銷毀 (只執行一次) ---
-      React.useEffect(() => {
-          if (editorRef.current && !cmInstance.current) {
-                  // 根據 activeTab 的檔名動態設定 mode
-                  const mode = activeTab?.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
-
-                  cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
-                      mode: mode,
-                      theme: "dracula",
-                  lineNumbers: true,
-                  indentUnit: 4,
-                  tabSize: 4,
-                  // *** [新增] 縮排優化設定 ***
-                  indentWithTabs: false, // 確保縮排使用空格而不是 Tab 字符
-                  smartIndent: true,     // 啟用智慧縮排，有助於 Backspace 一次刪除一個縮排
-                  extraKeys: {           // 配置 Tab 鍵行為
-                      Tab: function(cm) {
-                          // 插入 tabSize 數量的空格
-                          var spaces = Array(cm.getOption("indentUnit") + 1).join(" ");
-                          cm.replaceSelection(spaces);
-                      }
-                  },
-                  // *** [新增結束] ***
-                  // --- [新增] 啟用插件 (見步驟 2 & 3) ---
-                  autoCloseBrackets: true,
-                  matchBrackets: true
-                  // --- [新增結束] ---
-              });
-          }
-
-          // 組件卸載時清理 CodeMirror 實例 (只執行一次)
-          return () => {
-              if (cmInstance.current) {
-                  cmInstance.current.toTextArea(); // 恢復成 textarea
-                  cmInstance.current = null;
-              }
-          };
-      }, []); // <-- [關鍵] 空依賴陣列，確保只執行一次
-      // --- [修改結束] ---
-
-      // --- [新增] Effect 1.5: 重新綁定事件監聽器 (當 activeTab 改變時) ---
-      React.useEffect(() => {
-          if (cmInstance.current) {
-              // 1. 清理舊的監聽器 (如果有的話，雖然 CodeMirror 的 on/off 處理得很好，但明確清理是好習慣)
-              // 由於我們無法輕易存取舊的匿名函數，我們只能依賴 CodeMirror 的內部機制。
-              // 更好的做法是確保我們傳遞給 on 的函數是穩定的，或者在每次 activeTab 改變時重新綁定。
-              
-              // 為了確保 change 事件能拿到最新的 activeTab.id，我們必須在 activeTab 改變時重新綁定。
-              // 由於我們在 Effect 1 中沒有綁定，我們在這裡綁定並在清理函數中移除。
-              
-              // 為了避免重複綁定，我們使用一個 Ref 來儲存監聽器函數
-              const changeHandler = (cm) => {
-                  if (activeTab) {
-                      onChangeRef.current(activeTab.id, cm.getValue());
-                  }
-              };
-              
-              const keydownHandler = (cm, event) => {
-                  if (activeTab) {
-                      onKeyDownRef.current(cm, event, activeTab.id);
-                  }
-              };
-              
-              // 移除舊的監聽器 (如果存在)
-              cmInstance.current.off("change", cmInstance.current.__changeHandler);
-              cmInstance.current.off("keydown", cmInstance.current.__keydownHandler);
-              
-              // 綁定新的監聽器
-              cmInstance.current.on("change", changeHandler);
-              cmInstance.current.on("keydown", keydownHandler);
-              
-              // 儲存新的監聽器函數，以便下次清理
-              cmInstance.current.__changeHandler = changeHandler;
-              cmInstance.current.__keydownHandler = keydownHandler;
-              
-              // 清理函數：當 activeTab 改變或組件卸載時，移除監聽器
-              return () => {
-                  if (cmInstance.current) {
-                      cmInstance.current.off("change", changeHandler);
-                      cmInstance.current.off("keydown", keydownHandler);
-                  }
-              };
-          }
-      }, [activeTab, onChangeRef, onKeyDownRef]); // 依賴 activeTab 確保切換時重新綁定
-      // --- [新增] Effect 3: 確保 mode 在 activeTab 切換時更新 ---
-      React.useEffect(() => {
-          if (cmInstance.current && activeTab) {
-              const newMode = activeTab.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
-              const currentMode = cmInstance.current.getOption("mode");
-              
-              // 只有在 mode 確實改變時才更新
-              if (JSON.stringify(newMode) !== JSON.stringify(currentMode)) {
-                  cmInstance.current.setOption("mode", newMode);
-              }
-          }
-      }, [activeTab]);
-      // --- [新增結束] ---
-      // --- [新增結束] ---
-
-      // --- [修改] Effect 2: 同步內容 (當 activeTab 改變時) ---
-      React.useEffect(() => {
-          if (cmInstance.current) {
-              const currentVal = cmInstance.current.getValue();
-
-              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
-              if (activeTab && activeTab.content !== currentVal) {
-                  // 儲存目前游標位置
-                  const cursor = cmInstance.current.getCursor();
-                  
-                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
-                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
-                  cmInstance.current.off("change", cmInstance.current.__changeHandler);
-                  
-                  cmInstance.current.setValue(activeTab.content);
-                  
-                  // 重新開啟 change 事件
-                  cmInstance.current.on("change", cmInstance.current.__changeHandler);
-                  
-                  // 嘗試恢復游標位置 (如果行數還存在)
-                  try {
-                      cmInstance.current.setCursor(cursor);
-                  } catch (e) {
-                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
-                  }
-                  
-                  // 確保編輯器獲得焦點
-                  setTimeout(() => cmInstance.current.focus(), 0);
-
-              } else if (!activeTab && currentVal !== '') {
-                  // 如果沒有 activeTab，清空編輯器
-                  cmInstance.current.setValue('');
-              }
-          }
-      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
-      // --- [修改結束] ---
-
-      // --- [新增] Effect 2: 同步內容 (當 activeTab 改變時) ---
-      React.useEffect(() => {
-          if (cmInstance.current) {
-              const currentVal = cmInstance.current.getValue();
-
-              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
-              if (activeTab && activeTab.content !== currentVal) {
-                  // 儲存目前游標位置
-                  const cursor = cmInstance.current.getCursor();
-                  
-                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
-                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
-                  cmInstance.current.off("change", cmInstance.current.__changeHandler);
-                  
-                  cmInstance.current.setValue(activeTab.content);
-                  
-                  // 重新開啟 change 事件
-                  cmInstance.current.on("change", cmInstance.current.__changeHandler);
-                  
-                  // 嘗試恢復游標位置 (如果行數還存在)
-                  try {
-                      cmInstance.current.setCursor(cursor);
-                  } catch (e) {
-                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
-                  }
-                  
-                  // 確保編輯器獲得焦點
-                  setTimeout(() => cmInstance.current.focus(), 0);
-
-              } else if (!activeTab && currentVal !== '') {
-                  // 如果沒有 activeTab，清空編輯器
-                  cmInstance.current.setValue('');
-              }
-          }
-      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
-      // --- [修改結束] ---
-
-      return (
-          // 我們仍然需要 textarea 作為 CodeMirror 的基礎
-          <textarea ref={editorRef} style={{ display: 'none' }} />
-      );
+    try {
+      await newAttempt.save();
+      console.log(`[CodeMate 儲存中 2/4] Mongoose .save() 成功!`);
+    } catch (saveError) {
+      // --- [FIX] 這就是我們需要看的錯誤！ ---
+      console.error(`[CodeMate 儲存中 2/4] Mongoose .save() 失敗!`, saveError);
+      // 將 Mongoose 的詳細錯誤回傳給前端，以便在瀏覽器 F12 中看到
+      return res.status(500).json({ message: "Mongoose .save() 失敗", error: saveError.message, fullError: saveError });
     }
 
-    const App = () => {
-      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
-      const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
-      const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
-      const [isQuizComplete, setIsQuizComplete] = useState(false); // 測驗是否已答完
-      const [socket, setSocket] = useState(null);
-      const terminalInputRef = useRef(null);
-      const terminalOutputRef = useRef(null); // Ref for terminal input
-      const [isExecuting, setIsExecuting] = useState(false); // 追蹤是否有程式碼在執行中
-      const [isWaitingForInput, setIsWaitingForInput] = useState(false);
-
-      const [isLoginView, setIsLoginView] = useState(true);
-      const [studentId, setStudentId] = useState('');
-      const [studentName, setStudentName] = useState('');
-      const [password, setPassword] = useState('');
-      const [isLoggedIn, setIsLoggedIn] = useState(false);
-      const [welcomeMessage, setWelcomeMessage] = useState('');
-      const [message, setMessage] = useState('');
-      const [showMessage, setShowMessage] = useState(false);
-      
-      const messagesEndRef = useRef(null);
-      const isComposing = useRef(false); // 用於追蹤中文輸入法狀態
-      
-      const [chatMessages, setChatMessages] = useState([
-        { id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }
-      ]);
-      const [chatInput, setChatInput] = useState('');
-      const [isAiResponding, setIsAiResponding] = useState(false);
-      const [courses, setCourses] = useState([]);
-      const [selectedCourse, setSelectedCourse] = useState(null);
-      const [modules, setModules] = useState([]);
-      const [currentModule, setCurrentModule] = useState(null);
-      const [expandedModules, setExpandedModules] = useState({});
-      const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-      
-      const [tabs, setTabs] = useState([]);
-      const [activeTabId, setActiveTabId] = useState(null);
-      const [nextTabId, setNextTabId] = useState(1);
-      const activeTab = tabs.find(tab => tab.id === activeTabId);
-      const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
-      const [currentQuiz, setCurrentQuiz] = useState(null); // 存放當前正在作答的測驗模組
-      const [quizAnswers, setQuizAnswers] = useState({}); // 存放使用者的答案 { q1: 'true', q2: 'Array (陣列)' }
-      const [quizProgress, setQuizProgress] = useState({}); // 存放所有測驗的進度 { 1014: { completed: true, errors: 0 } }
-      
-      // Mock Data
-      const mockCourses = [
-          { id: 1, title: "程式設計 (一)" },
-          { id: 2, title: "程式設計 (二)" }
-      ];
-      const mockModules = {
-          1: [
-              { 
-                id: 101, 
-                title: "第1章．Python 的基本觀念", 
-                submodules: [
-                    { id: 1011, title: "影片 1-1", type: 'video', content: "ch01-1", videoUrl: "https://drive.google.com/file/d/15qXDhuVvm_VJyJNI0uyySjEucgh-r7HT/preview" },
-                    { id: 1012, title: "影片 1-2", type: 'video', content: "ch01-2", videoUrl: "https://drive.google.com/file/d/1e_es_9B7bCMsf27CnRuclm_RUELwSrS1/preview" },
-                    { id: 1013, title: "Ch1 PPT", type: 'ppt', content: "這是變數與資料型別的簡報。", pptUrl: "https://drive.google.com/file/d/1kuOHyantUs0sBOKw04TUG9pRvwEJq0zx/preview" },
-                    { id: 1014,
-                      title: "Ch1 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對 Python 基本觀念的理解。",
-                      questions: [
-                          {
-                              id: 'q1-1', // 確保 ID 唯一
-                              type: 'true-false',
-                              text: 'Python 是一種編譯語言 (Compiled Language)。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q1-2',
-                              type: 'multiple-choice',
-                              text: '以下哪個不是 Python 的基本資料型態？',
-                                options: [
-                                  'Integer (整數)',
-                                  'String (字串)',
-                                  'Boolean (布林值)',
-                                  'Array (陣列)'
-                              ],
-                              answer: 'Array (陣列)' // Python 內建的是 List
-                          }
-                      ]
-                    }  
-                ]
-              },
-              { 
-                id: 102,
-                title: "第2章．變數與數學運算", 
-                submodules: [
-                    { id: 1021, title: "影片 2-1", type: 'video', content: "ch02-1", videoUrl: "https://drive.google.com/file/d/1akrD4qfu1G7LZuwK-9jI-j7B1OZujqZ1/preview" },
-                    { id: 1022, title: "影片 2-2", type: 'video', content: "ch02-2", videoUrl: "https://drive.google.com/file/d/1zstzbCFhBGfFqm2LM93zXpg5YZOQHvpr/preview" },
-                    { id: 1023, title: "影片 2-3", type: 'video', content: "ch02-3", videoUrl: "https://drive.google.com/file/d/1wgqSy52BrBX4xWCraa-msP39MccoK86s/preview" },
-                    { id: 1024, title: "Ch2 PPT", type: 'ppt', content: "變數與數學運算簡報。", pptUrl: "https://drive.google.com/file/d/1i2Xi_BvXIuytfp9IAt8Nt0tjEj0FojFf/preview" },
-                    { id: 1025, // <-- 新增
-                      title: "Ch2 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對變數與數學運算的理解。",
-                      questions: [
-                          {
-                              id: 'q2-1',
-                              type: 'true-false',
-                              text: '在 Python 中，`x = 5` 和 `x == 5` 的意義相同。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q2-2',
-                              type: 'multiple-choice',
-                              text: '`7 // 2` 的運算結果是什麼？',
-                                options: [
-                                  '3.5',
-                                  '3',
-                                  '1',
-                                  '4'
-                              ],
-                              answer: '3'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 103, 
-                title: "第3章．Python 的基本資料型態", 
-                submodules: [
-                    { id: 1031, title: "影片 3-1", type: 'video', content: "ch03-1", videoUrl: "https://drive.google.com/file/d/1ulfuXfQyLCqQX5u7IGpACFnWpL0GZrVi/preview" },
-                    { id: 1032, title: "影片 3-2", type: 'video', content: "ch03-2", videoUrl: "https://drive.google.com/file/d/1T9msCqrfpk5rRoJzRGKb8WjFu9HC-96y/preview" },
-                    { id: 1033, title: "影片 3-3", type: 'video', content: "ch03-3", videoUrl: "https://drive.google.com/file/d/1P6wqAcHvCacyv0wNBvHBlhXLL4Ok_0zY/preview" },
-                    { id: 1034, title: "影片 3-4", type: 'video', content: "ch03-4", videoUrl: "https://drive.google.com/file/d/12OWHM2vRUKYYOzFSpgvLJSCny8d6IR4Y/preview" },
-                    { id: 1035, title: "Ch3 PPT", type: 'ppt', content: "Python 的基本資料型態簡報。", pptUrl: "https://drive.google.com/file/d/1Onwja2HDKynOkVfxxKz4oIZe-je5NKQK/preview" },
-                    { id: 1036, // <-- 新增
-                      title: "Ch3 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對基本資料型態的理解。",
-                      questions: [
-                          {
-                              id: 'q3-1',
-                              type: 'true-false',
-                              text: 'Python 中的字串 (string) 是一種不可變 (immutable) 型態。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q3-2',
-                              type: 'multiple-choice',
-                              text: '`type(12.0)` 會回傳什麼？',
-                                options: [
-                                  'int',
-                                  'str',
-                                  'float',
-                                  'bool'
-                              ],
-                              answer: 'float'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 104,
-                title: "第4章．基本輸入與輸出", 
-                submodules: [
-                    { id: 1041, title: "影片 4-1", type: 'video', content: "ch04-1", videoUrl: "https://drive.google.com/file/d/1PBWDANb_YfMzYh8ko0F0ZHX_qK8PHeif/preview" },
-                    { id: 1042, title: "影片 4-2", type: 'video', content: "ch04-2", videoUrl: "https://drive.google.com/file/d/1RZ7uZfKSa-Gqun6NGDQMTVWu_8Wlnxo-/preview" },
-                    { id: 1043, title: "影片 4-3", type: 'video', content: "ch04-3", videoUrl: "https://drive.google.com/file/d/1en-PQAQZ5QMaN6-JNTw9UKW-M2dPL1GB/preview" },
-                    { id: 1044, title: "影片 4-4", type: 'video', content: "ch04-4", videoUrl: "https://drive.google.com/file/d/1exViJHcDSWentSlKXcuU_hM9XQoNDQ4Q/preview" },
-                    { id: 1045, title: "Ch4 PPT", type: 'ppt', content: "基本輸入與輸出簡報。", pptUrl: "https://drive.google.com/file/d/1SgipMeV1lipmxDVn_otgGR0m_hcZu5Qm/preview" },
-                    { id: 1046, // <-- 新增
-                      title: "Ch4 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對基本輸入與輸出的理解。",
-                      questions: [
-                          {
-                              id: 'q4-1',
-                              type: 'true-false',
-                              text: '`input()` 函數讀取到的使用者輸入，其資料型態永遠是 `str` (字串)。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q4-2',
-                              type: 'multiple-choice',
-                              text: '如何讓 `print(a, b)` 輸出時以逗號分隔 (例如 "a,b")？',
-                                options: [
-                                  'print(a, b, sep=',')',
-                                  'print(a + "," + b)',
-                                  'print(a, b, end=',')',
-                                  'print(a, b, split=',')'
-                              ],
-                              answer: 'print(a, b, sep=,)'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 105, 
-                title: "第5章．流程控制：if 敘述", 
-                submodules: [
-                    { id: 1051, title: "影片 5-1", type: 'video', content: "ch05-1", videoUrl: "https://drive.google.com/file/d/1w6jZUN-n8iL5RMtgpXjEZx0OdgRzByCo/preview" },
-                    { id: 1052, title: "影片 5-2", type: 'video', content: "ch05-2", videoUrl: "https://drive.google.com/file/d/1qG7HS8evjL3Par5-lY7L_4OC5UE9aHC7/preview" },
-                    { id: 1053, title: "影片 5-3", type: 'video', content: "ch05-3", videoUrl: "https://drive.google.com/file/d/1c4Aa5jzbv2MsdqlSqw8E2EIBbpbeKXUh/preview" },
-                    { id: 1054, title: "Ch5 PPT", type: 'ppt', content: "流程控制:if敘述簡報。", pptUrl: "https://drive.google.com/file/d/1zjnRpmtsS2dbEm4jjx_UlJz-1_5TSQSf/preview" },
-                    { id: 1055, // <-- 新增
-                      title: "Ch5 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對 if 敘述的理解。",
-                      questions: [
-                          {
-                              id: 'q5-1',
-                              type: 'true-false',
-                              text: '在 `if-elif-else` 結構中，`else` 區塊是必須要有的。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q5-2',
-                              type: 'multiple-choice',
-                              text: '在 Python 中，哪個運算子用於檢查「是否不等於」？',
-                                options: [
-                                  '!=',
-                                  '<>',
-                                  'not =',
-                                  'is not'
-                              ],
-                              answer: '!='
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 106,
-                title: "第6章．認識串列 (List)", 
-                submodules: [
-                    { id: 10601, title: "影片 6-1", type: 'video', content: "ch06-1", videoUrl: "https://drive.google.com/file/d/1mAKdm2wdvRwAX-DwS36GeYWoYleODrIs/preview" },
-                    { id: 10602, title: "影片 6-2", type: 'video', content: "ch06-2", videoUrl: "https://drive.google.com/file/d/1mqyJjRAqO4HW4DbX6n-73uLfdiDZVDtD/preview" },
-                    { id: 10603, title: "影片 6-3", type: 'video', content: "ch06-3", videoUrl: "https://drive.google.com/file/d/16bdHDRPKb547Ujw5hmld_qx0wmyjIo_9/preview" },
-                    { id: 10604, title: "影片 6-4", type: 'video', content: "ch06-4", videoUrl: "https://drive.google.com/file/d/1o3xnSCjYe3_1O2Qn1R9RcaTINEvgL-eS/preview" },
-                    { id: 10605, title: "影片 6-5", type: 'video', content: "ch06-5", videoUrl: "https://drive.google.com/file/d/1CVZdFiT_GZckX5CApSWRMKWXfymZFRC8/preview" },
-                    { id: 10606, title: "影片 6-6", type: 'video', content: "ch06-6", videoUrl: "https://drive.google.com/file/d/1iB-8B5ZX5D3blMJ89Yqfwg2jINTuCik8/preview" },
-                    { id: 10607, title: "影片 6-7", type: 'video', content: "ch06-7", videoUrl: "https://drive.google.com/file/d/1Yk20ZL3k1Z4vV70Mh1Vb0ioB_Vs_jiWT/preview" },
-                    { id: 10608, title: "影片 6-8", type: 'video', content: "ch06-8", videoUrl: "https://drive.google.com/file/d/1v_XeX8qiVEi7aZgDcyKGLWQ9ZvdNmA9p/preview" },
-                    { id: 10609, title: "影片 6-9", type: 'video', content: "ch06-9", videoUrl: "https://drive.google.com/file/d/1UteWXpmrRyKuumD16kZbZcgul6XoTem_/preview" },
-                    { id: 10610, title: "Ch6 PPT", type: 'ppt', content: "認識串列list簡報。", pptUrl: "https://drive.google.com/file/d/19tS6wbJ8cwTnOTweUO5nXnOFrus1gEJb/preview" },
-                    { id: 10611, // <-- 新增
-                      title: "Ch6 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對串列 (List) 的理解。",
-                      questions: [
-                          {
-                              id: 'q6-1',
-                              type: 'true-false',
-                              text: '一個 Python 串列 (List) 中可以同時包含整數、字串和布林值。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q6-2',
-                              type: 'multiple-choice',
-                              text: '如何獲取串列 `my_list = [10, 20, 30]` 中的最後一個元素？',
-                                options: [
-                                  'my_list[last]',
-                                  'my_list[3]',
-                                  'my_list[-1]',
-                                  'my_list.last()'
-                              ],
-                              answer: 'my_list[-1]'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 107, 
-                title: "第7章．迴圈設計", 
-                submodules: [
-                    { id: 1071, title: "影片 7-1", type: 'video', content: "ch07-1", videoUrl: "https://drive.google.com/file/d/1puncyhBynW5CZKCz8ZkwuvXKeCTL7qwI/preview" },
-                    { id: 1072, title: "影片 7-2", type: 'video', content: "ch07-2", videoUrl: "https://drive.google.com/file/d/13VW1-qRwq12s0VjqFWnTXrL_QHtcwHNQ/preview" },
-                    { id: 1073, title: "影片 7-3", type: 'video', content: "ch07-3", videoUrl: "https://drive.google.com/file/d/17Jw49QPhW_mha1_ON2n0V7hEvF3MQbQs/preview" },
-                    { id: 1074, title: "影片 7-4", type: 'video', content: "ch07-4", videoUrl: "https://drive.google.com/file/d/1kFGimB3UYHtakbEHNZg4qdSJjd8oaSVv/preview" },
-                    { id: 1075, title: "影片 7-5", type: 'video', content: "ch07-5", videoUrl: "https://drive.google.com/file/d/1B8jfmclAVltIF1qfmL_OqSwivVP0NbO9/preview" },
-                    { id: 1076, title: "影片 7-6", type: 'video', content: "ch07-6", videoUrl: "https://drive.google.com/file/d/1xlPX2SaNjoyGGqr2g8GOJg8udMzzjw5m/preview" },
-                    { id: 1077, title: "影片 7-7", type: 'video', content: "ch07-7", videoUrl: "https://drive.google.com/file/d/1R8xghJBaUUmTawLuT_ZLlzrsAPNNftH1/preview" },
-                    { id: 1078, title: "影片 7-8", type: 'video', content: "ch07-8", videoUrl: "https://drive.google.com/file/d/1mewZlVhB3rIDP9JdNZlTmD2xU-532JLC/preview" },
-                    { id: 1079, title: "Ch7 PPT", type: 'ppt', content: "迴圈設計簡報。", pptUrl: "https://drive.google.com/file/d/1-nTXIdezNanixYdsAHvhsw5ouyylUVLA/preview" },
-                    { id: 10710, // <-- 新增
-                      title: "Ch7 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對迴圈設計的理解。",
-                      questions: [
-                          {
-                              id: 'q7-1',
-                              type: 'true-false',
-                              text: '`for` 迴圈通常用於已知確切迴圈次數的情況，而 `while` 迴圈用於滿足特定條件時重複執行。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q7-2',
-                              type: 'multiple-choice',
-                              text: '`range(1, 5)` 會產生哪個序列？',
-                                options: [
-                                  '[1, 2, 3, 4, 5]',
-                                  '[1, 2, 3, 4]',
-                                  '[0, 1, 2, 3, 4]',
-                                  '[1, 5]'
-                              ],
-                              answer: '[1, 2, 3, 4]'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 109,
-                title: "第9章．字典 (Dict)", 
-                submodules: [
-                    { id: 1091, title: "影片 9-1", type: 'video', content: "ch09-1", videoUrl: "https://drive.google.com/file/d/1LU-yTh6sUqu9tFNlt0t6TbDsCoPMYmJL/preview" },
-                    { id: 1092, title: "影片 9-2", type: 'video', content: "ch09-2", videoUrl: "https://drive.google.com/file/d/1hgiEApeloUQTIyXj5SqUT_N7Lb8U7uGZ/preview" },
-                    { id: 1093, title: "影片 9-3", type: 'video', content: "ch09-3", videoUrl: "https://drive.google.com/file/d/1FAErExywjvoX0jCz9mJsHky5X-a0dYuf/preview" },
-                    { id: 1094, title: "影片 9-4", type: 'video', content: "ch09-4", videoUrl: "https://drive.google.com/file/d/175rAMJnuekE6sMmeR9fpUWKRRQnbN3Hq/preview" },
-                    { id: 1095, title: "影片 9-5", type: 'video', content: "ch09-5", videoUrl: "https://drive.google.com/file/d/1PjckDItx4PXr7lhzyCXw9OZUmJISXu8N/preview" },
-                    { id: 1096, title: "Ch9 PPT", type: 'ppt', content: "字典dict簡報。", pptUrl: "https://drive.google.com/file/d/18xRrQ_cgopJ9OWG8LjnwLu255CHaRM99/preview" },
-                    { id: 1097, // <-- 新增
-                      title: "Ch9 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對字典 (Dict) 的理解。",
-                      questions: [
-                          {
-                              id: 'q9-1',
-                              type: 'true-false',
-                              text: '字典 (Dictionary) 中的鍵 (key) 必須是唯一的。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q9-2',
-                              type: 'multiple-choice',
-                              text: '如何獲取字典 `d = {"name": "CodeMate"}` 中的 "CodeMate" 值？',
-                                options: [
-                                  'd[0]',
-                                  'd["name"]',
-                                  'd.value("name")',
-                                  'd.get(0)'
-                              ],
-                              answer: 'd["name"]'
-                          }
-                      ]
-                    }
-                ]
-              }
-          ],
-          2: [
-              { 
-                id: 201, 
-                title: "第10章．集合 (Set)",
-                submodules: [
-                    { id: 2011, title: "影片 10-1", type: 'video', content: "ch10-1", videoUrl: "https://drive.google.com/file/d/1jsAHwX5rVe2nDz_q4LWEGNvN6JkzvZRR/preview" },
-                    { id: 2012, title: "影片 10-2", type: 'video', content: "ch10-2", videoUrl: "https://drive.google.com/file/d/1wArkUzA6fjCA4lLxfRX6MA_vyKyPIH1W/preview" },
-                    { id: 2013, title: "Ch10 PPT", type: 'ppt', content: "集合set簡報。", pptUrl: "https://drive.google.com/file/d/1dEoBpolk3Qrm7HXIcpLc8Re835UxIZYb/preview" },
-                    { id: 2014, // <-- 新增
-                      title: "Ch10 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對集合 (Set) 的理解。",
-                      questions: [
-                          {
-                              id: 'q10-1',
-                              type: 'true-false',
-                              text: '集合 (Set) 中允許儲存重複的元素。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q10-2',
-                              type: 'multiple-choice',
-                              text: '哪種資料型態「不能」被加入到集合 (Set) 中，因為它是可變的(mutable)？',
-                                options: [
-                                  'int',
-                                  'str',
-                                  'tuple',
-                                  'list'
-                              ],
-                              answer: 'list'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 202,
-                title: "第11章．函數設計", 
-                submodules: [
-                    { id: 20201, title: "影片 11-1", type: 'video', content: "ch11-1", videoUrl: "https://drive.google.com/file/d/1nDv0h-uyW41QeofZbRGZV03vouiCj7bz/preview" },
-                    { id: 20202, title: "影片 11-2", type: 'video', content: "ch11-2", videoUrl: "https://drive.google.com/file/d/1nLq0y5iY1HaNjrP-Te38UGIA77NqttUH/preview" },
-                    { id: 20203, title: "影片 11-3", type: 'video', content: "ch11-3", videoUrl: "https://drive.google.com/file/d/118tQbDSBnBh8TTrC31tLBEn_w4PTtPsP/preview" },
-                    { id: 20204, title: "影片 11-4", type: 'video', content: "ch11-4", videoUrl: "https://drive.google.com/file/d/1GhkXTshbQmeqQUe6KsvJt7XxwR1wF4C7/preview" },
-                    { id: 20205, title: "影片 11-5", type: 'video', content: "ch11-5", videoUrl: "https://drive.google.com/file/d/1eIZ0gI7P2t0dJd5eWmBlR5-vrWDnJbCT/preview" },
-                    { id: 20206, title: "影片 11-6", type: 'video', content: "ch11-6", videoUrl: "https://drive.google.com/file/d/1UBSKCn8QH2shniJ67vUAQGWgv_XqFNat/preview" },
-                    { id: 20207, title: "影片 11-7", type: 'video', content: "ch11-7", videoUrl: "https://drive.google.com/file/d/1TKau-g2cJBYoYQaGQ_QUqhHpjcfwGrRl/preview" },
-                    { id: 20208, title: "影片 11-8", type: 'video', content: "ch11-8", videoUrl: "https://drive.google.com/file/d/1gCq7iXwN20wXOjtWCRPgm4J7oy61uxjk/preview" },
-                    { id: 20209, title: "Ch11 PPT", type: 'ppt', content: "函數設計簡報。", pptUrl: "https://drive.google.com/file/d/1nQ8xF7lG7Jdi2VqxabqHgCeGSyPdn0C8/preview" },
-                    { id: 20210, // <-- 新增
-                      title: "Ch11 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對函數設計的理解。",
-                      questions: [
-                          {
-                              id: 'q11-1',
-                              type: 'true-false',
-                              text: '在函數內部定義的變數（區域變數）可以在函數外部被存取。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q11-2',
-                              type: 'multiple-choice',
-                              text: '哪個關鍵字用於在 Python 中定義一個函數？',
-                                options: [
-                                  'function',
-                                  'def',
-                                  'fun',
-                                  'define'
-                              ],
-                              answer: 'def'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 203,
-                title: "第12章．類別-物件導向程式設計", 
-                submodules: [
-                    { id: 20301, title: "影片 12-1", type: 'video', content: "ch12-1", videoUrl: "https://drive.google.com/file/d/1UXHMu3V-kz0OuoWbxezm4Tt_BocyeuYy/preview" },
-                    { id: 20302, title: "影片 12-2", type: 'video', content: "ch12-2", videoUrl: "https://drive.google.com/file/d/1Jd70xjj23L4tWQX0peLfqvYTIE6qtfKe/preview" },
-                    { id: 20303, title: "影片 12-3", type: 'video', content: "ch12-3", videoUrl: "https://drive.google.com/file/d/15yjuzXVsAq6j26htZIJjKaiVBRuBntFo/preview" },
-                    { id: 20304, title: "影片 12-4", type: 'video', content: "ch12-4", videoUrl: "https://drive.google.com/file/d/1t8W5WxBtiPJsmVLLml4KVN3ZYkD_yBxG/preview" },
-                    { id: 20305, title: "影片 12-5", type: 'video', content: "ch12-5", videoUrl: "https://drive.google.com/file/d/1GvwSP1BaLKaO5x91DUne_UJ6woK4_YAc/preview" },
-                    { id: 20306, title: "影片 12-6", type: 'video', content: "ch12-6", videoUrl: "https://drive.google.com/file/d/1wrRkmzKqgwV5oknD_-h1tyWZFZxgK1EP/preview" },
-                    { id: 20307, title: "影片 12-7", type: 'video', content: "ch12-7", videoUrl: "https://drive.google.com/file/d/11AsulWkN9GUI3lu36QpnINScU2nVoEbm/preview" },
-                    { id: 20308, title: "Ch12 PPT", type: 'ppt', content: "類別物件導向程式設計簡報。", pptUrl: "https://drive.google.com/file/d/1gUfZM9TLjHELdU8NvuthXZYs_q-PzpoZ/preview" },
-                    { id: 20309, // <-- 新增
-                      title: "Ch12 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對類別 (Class) 的理解。",
-                      questions: [
-                          {
-                              id: 'q12-1',
-                              type: 'true-false',
-                              text: '`__init__` 方法是類別 (Class) 的建構子 (constructor)，在建立物件時會自動被呼叫。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q12-2',
-                              type: 'multiple-choice',
-                              text: '在類別方法 (method) 中，代表物件本身的參數通常被命名為什麼？',
-                                options: [
-                                  'this',
-                                  'object',
-                                  'self',
-                                  'instance'
-                              ],
-                              answer: 'self'
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 204,
-                title: "第14章．檔案的讀取與寫入", 
-                submodules: [
-                    { id: 20401, title: "影片 14-1", type: 'video', content: "ch14-1", videoUrl: "https://drive.google.com/file/d/1VIldAr-lk1Fg2Y2ImOebkLPC1U-nUUNQ/preview" },
-                    { id: 20402, title: "影片 14-2", type: 'video', content: "ch14-2", videoUrl: "https://drive.google.com/file/d/1GwIiw165_Tt9z9bWYTisYR9ia5mo-K6T/preview" },
-                    { id: 20403, title: "影片 14-3", type: 'video', content: "ch14-3", videoUrl: "https://drive.google.com/file/d/1WPkgNbji005sMnkkZ9I0qAl1y1YsbI0e/preview" },
-                    { id: 20404, title: "影片 14-4", type: 'video', content: "ch14-4", videoUrl: "https://drive.google.com/file/d/1XI9mRLRDyx5E7qZTX3MrCfkrGMcZdueZ/preview" },
-                    { id: 20405, title: "影片 14-5", type: 'video', content: "ch14-5", videoUrl: "https://drive.google.com/file/d/1Y1JDQOvJsCqX0HZDTGS0E2V59E1yMCAa/preview" },
-                    { id: 20406, title: "影片 14-6", type: 'video', content: "ch14-6", videoUrl: "https://drive.google.com/file/d/13zBnQIJ26OhibKDRCX1RcM4-e04tmXmX/preview" },
-                    { id: 20407, title: "影片 14-7", type: 'video', content: "ch14-7", videoUrl: "https://drive.google.com/file/d/1-omN2XyOuE7ET9j3jq1W95bWo0TeNqnx/preview" },
-                    { id: 20408, title: "影片 14-8", type: 'video', content: "ch14-8", videoUrl: "https://drive.google.com/file/d/19xXOBsR8BgIH8-oNsyWik3SlmU7hk4pM/preview" },
-                    { id: 20409, title: "影片 14-9", type: 'video', content: "ch14-9", videoUrl: "https://drive.google.com/file/d/1o7ipa5R9uK42YvSJJhcbQrEWeoYB0TzM/preview" },
-                    { id: 20410, title: "影片 14-10", type: 'video', content: "ch14-10", videoUrl: "https://drive.google.com/file/d/1o7ipa5R9uK42YvSJJhcbQrEWeoYB0TzM/preview" },
-                    { id: 20411, title: "Ch14 PPT", type: 'ppt', content: "檔案的讀取與寫入簡報。", pptUrl: "https://drive.google.com/file/d/1Bvq6ZdAvAm2oF-ktLWeVLiCEtSNGB8xH/preview" },
-                    { id: 20412, // <-- 新增
-                      title: "Ch14 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對檔案讀寫的理解。",
-                      questions: [
-                          {
-                              id: 'q14-1',
-                              type: 'true-false',
-                              text: '使用 `with open(...) as f:` 的主要好處是，它能確保檔案在區塊結束後自動被關閉 (close)。',
-                              answer: 'true'
-                          },
-                          {
-                              id: 'q14-2',
-                              type: 'multiple-choice',
-                              text: '開啟檔案進行「寫入」並會覆蓋原有內容的模式 (mode) 是什麼？',
-                                options: [
-                                  "'r'",
-                                  "'a'",
-                                  "'w'",
-                                  "'x'"
-                              ],
-                              answer: "'w'"
-                          }
-                      ]
-                    }
-                ]
-              },
-              { 
-                id: 205, 
-                title: "第15章．程式除錯與異常處理",
-                submodules: [
-                    { id: 2051, title: "影片 15-1", type: 'video', content: "ch15-1", videoUrl: "https://drive.google.com/file/d/1GGa9vT1UulGGzAWquIv9zDO9cma_OeN1/preview" },
-                    { id: 2052, title: "影片 15-2", type: 'video', content: "ch15-2", videoUrl: "https://drive.google.com/file/d/1WlJweU-1R8MMfyfzahyo2qY-E1NtRO5V/preview" },
-                    { id: 2053, title: "影片 15-3", type: 'video', content: "ch15-3", videoUrl: "https://drive.google.com/file/d/1uLjefZmxU-dVgVtstpKn1WU-bDO1J0yT/preview" },
-                    { id: 2054, title: "Ch15 PPT", type: 'ppt', content: "程式除錯與異常處理簡報。", pptUrl: "https://drive.google.com/file/d/15CCKPpCGoOAlvDBOFXmp_rf5-JZir3he/preview" },
-                    { id: 2055, // <-- 新增
-                      title: "Ch15 隨堂測驗",
-                      type: 'quiz',
-                      content: "測驗您對異常處理的理解。",
-                      questions: [
-                          {
-                              id: 'q15-1',
-                              type: 'true-false',
-                              text: '`try...except` 區塊中，`except` 是用來放置主要執行的程式碼，`try` 才是用來捕捉錯誤。',
-                              answer: 'false'
-                          },
-                          {
-                              id: 'q15-2',
-                              type: 'multiple-choice',
-                              text: '哪個關鍵字用於在 `try` 區塊中「主動」拋出一個錯誤？',
-                                options: [
-                                  'throw',
-                                  'error',
-                                  'except',
-                                  'raise'
-                              ],
-                              answer: 'raise'
-                          }
-                      ]
-                    }
-                ]
-              }
-          ]
-      };
-
-      const getInitialPage = () => {
-        const hash = window.location.hash.substring(1);
-        const validPages = ['auth', 'intro', 'learning'];
-        const storedId = localStorage.getItem('studentId');
-        if (validPages.includes(hash)) {
-          if ((hash === 'intro' || hash === 'learning') && !storedId) return 'auth';
-          return hash;
-        }
-        return storedId ? 'intro' : 'auth';
-      };
-      
-      const [page, setPage] = useState(getInitialPage);
-
-      useEffect(() => {
-        const initialPage = getInitialPage();
-        setPage(initialPage);
-        window.history.replaceState({ page: initialPage }, '', `#${initialPage}`);
-        const storedId = localStorage.getItem('studentId');
-        const storedName = localStorage.getItem('studentName');
-        if (storedId && storedName) {
-          setIsLoggedIn(true);
-          setStudentId(storedId);
-          setWelcomeMessage(`歡迎回來, ${storedName} (${storedId})!`);
-        }
-      }, []);
-      
-      useEffect(() => {
-        const handlePopState = (event) => {
-          setPage((event.state && event.state.page) ? event.state.page : getInitialPage());
-        };
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-      }, []);
-
-      useEffect(() => {
-        const currentHash = window.location.hash.substring(1);
-        if (page !== currentHash) {
-          window.history.pushState({ page: page }, '', `#${page}`);
-        }
-      }, [page]);
-      
-      useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, [chatMessages]);
-
-      useEffect(() => {
-        if (window.Prism) {
-            Prism.highlightAll();
-        }
-      }, [chatMessages, tabs, activeTabId]);
-      
-      useEffect(() => {
-        if (page === 'learning') {
-            const horizontalSplit = Split(['#left-pane', '#right-pane'], {
-                sizes: [62.5, 37.5],
-                minSize: 300,
-                gutterSize: 8,
-                cursor: 'col-resize',
-            });
-
-            const verticalSplit = Split(['#material-pane', '#chat-pane'], {
-                sizes: [60, 40],
-                direction: 'vertical',
-                minSize: 200,
-                gutterSize: 8,
-                cursor: 'row-resize',
-            });
-
-            return () => {
-                horizontalSplit.destroy();
-                verticalSplit.destroy();
-            };
-        }
-    }, [page]);
-
-      useEffect(() => {
-        const loadData = async () => {
-          const currentStudentId = localStorage.getItem('studentId'); 
-          
-          if (!currentStudentId) {
-              console.error("loadData 錯誤：在 localStorage 中找不到 studentId。");
-              return;
-          }
-
-          // --- 🔽 [偵錯 1] 確認學號 ---
-          console.log(`[CodeMate 偵錯 1] loadData 已啟動，學號: ${currentStudentId}`);
-          // --- 🔼 --------------------
-
-          // 1. 載入對話紀錄 (保持不變)
-          try {
-            const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${currentStudentId}`);
-            if (!res.ok) throw new Error('無法從伺服器讀取對話紀錄');
-            const conversation = await res.json();
-            if (conversation && conversation.length > 0) {
-              setChatMessages(conversation);
-            } else {
-              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-            }
-          } catch (error) {
-            console.error("讀取對話紀錄失敗:", error);
-            setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-          }
-
-          // 2. 載入測驗進度
-          try {
-              const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${currentStudentId}`);
-              // --- 🔽 [偵錯 2] 確認 API 回應 ---
-              console.log(`[CodeMate 偵錯 2] 測驗 API 回應狀態: ${res.status}`, res.ok);
-              // --- 🔼 --------------------
-              if (res.ok) {
-                  const data = await res.json();
-                  // --- 🔽 [偵錯 3] 確認從 API 拿到的原始資料 ---
-                  console.log('[CodeMate 偵錯 3] 拿到的原始進度資料 (data):', JSON.stringify(data));
-                  // --- 🔼 --------------------
-
-                  const progressToSet = data.progress.quizzes || {};
-                  // --- 🔽 [偵錯 4] 確認最終要設定到 state 的值 ---
-                  console.log('[CodeMate 偵錯 4] 準備設定到 quizProgress state 的值:', progressToSet);
-                  // --- 🔼 --------------------
-                  
-                  setQuizProgress(progressToSet); 
-              } else {
-                  console.error("無法從 DB 載入測驗進度 (API 回應 not ok)");
-                  setQuizProgress({});
-              }
-          } catch (e) {
-              console.error("載入測驗進度 API 請求失敗:", e);
-              setQuizProgress({});
-          }
-
-          // 3. 載入課程/分頁進度 (保持不變)
-          setCourses(mockCourses);
-          const savedProgressRaw = localStorage.getItem(`progress_${currentStudentId}`); 
-
-          if (savedProgressRaw) {
-            try {
-              const savedProgress = JSON.parse(savedProgressRaw);
-              const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
-              if (!lastCourse) {
-                  return;
-              }
-              const courseModules = mockModules[lastCourse.id] || [];
-              const lastModuleId = savedProgress.lastModuleId;
-              let lastModule = null;
-              let parentModule = null;
-
-              for (const module of courseModules) {
-                  if (module.id === lastModuleId) { lastModule = module; break; }
-                  if (module.submodules) {
-                      const foundSub = module.submodules.find(sm => sm.id === lastModuleId);
-                      if (foundSub) { lastModule = foundSub; parentModule = module; break; }
-                  }
-              }
-
-              if (!lastModule && courseModules.length > 0) {
-                  const firstModule = courseModules[0];
-                  lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
-                  if (firstModule.submodules) parentModule = firstModule;
-              }
-              
-              setSelectedCourse(lastCourse);
-              setModules(courseModules);
-              setCurrentModule(lastModule);
-              if (parentModule) {
-                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
-              }
-              
-              if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
-                  setTabs(savedProgress.tabs);
-                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
-                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
-              } else if (lastModule) {
-                  handleModuleSelect(lastModule, true);
-              }               
-            } catch (error) {
-              console.error("讀取進度失敗，將重設為預設值:", error);
-              localStorage.removeItem(`progress_${currentStudentId}`);
-              if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
-            }
-          } else {
-            if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
-          }
-        };
-
-        if (page === 'learning' && isLoggedIn && studentId) {
-          loadData();
-        }
-      }, [page, isLoggedIn, studentId]);
-
-      useEffect(() => {
-          if (page === 'learning' && isLoggedIn && currentModule && studentId) {
-              const progress = {
-                  lastCourseId: selectedCourse?.id,
-                  lastModuleId: currentModule.id,
-                  tabs: tabs,
-                  activeTabId: activeTabId,
-              };
-              localStorage.setItem(`progress_${studentId}`, JSON.stringify(progress));
-          }
-      }, [tabs, activeTabId, currentModule, studentId]); // chatMessages is REMOVED from dependency array
-
-      // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
-      useEffect(() => {
-          // 只在登入後且在學習頁面時建立連線
-          if (isLoggedIn && page === 'learning') {
-              // 使用 window.location.origin 來自動獲取伺服器位址 (Render 會處理好)
-              const newSocket = io(window.location.origin, {
-                  // 您可以加入其他選項，例如 transports: ['websocket']
-              });
-              setSocket(newSocket);
-              console.log("[Socket.IO] 正在嘗試連線...");
-
-              newSocket.on('connect', () => {
-                  console.log(`[Socket.IO] 連線成功: ${newSocket.id}`);
-                  showMessageModal('已連接到執行服務。');
-              });
-
-              newSocket.on('disconnect', () => {
-                  console.log('[Socket.IO] 連線中斷');
-                  setSocket(null); // 清理 socket 狀態
-                  // 如果有程式碼正在執行，可能需要更新 UI 狀態
-                  setIsExecuting(false);
-                    setTabs(prevTabs => prevTabs.map(t => t.output === '執行中...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
-                  showMessageModal('與執行服務連線中斷。');
-              });
-
-              newSocket.on('connect_error', (err) => {
-                    console.error('[Socket.IO] 連線錯誤:', err);
-                    showMessageModal(`無法連接執行服務: ${err.message}`);
-                });
-
-              // 監聽來自後端的輸出
-              newSocket.on('terminal_output', (data) => {
-	                  // --- 🔽 [修改] 偵測是否需要輸入 ---
-	                  let shouldWaitForInput = false;
-	                  // 偵測邏輯：如果輸出結尾是 ':' 或 '?'，或包含 'input' 提示，則視為等待輸入
-	                  // 為了更可靠，我們只在程式還在執行中，且有輸出時，才將狀態設為 true
-	                  // 由於後端已經發送了輸出，我們直接根據輸出內容來判斷
-	                  // 這裡採用最寬鬆的判斷：只要程式在執行中，且有輸出，就顯示輸入框
-	                  // 這樣使用者可以隨時輸入，但更精確的判斷是檢查輸出是否為 input() 的提示
-	                  // 由於您的程式碼是 input('guess a word')，輸出是 'guess a word'，結尾沒有 ':'
-	                  // 我們將判斷邏輯改為：只要輸出不為空，且程式還在執行中，就顯示輸入框
-	                  if (data.trim().length > 0) {
-	                        shouldWaitForInput = true;
-	                  }
-	                  setIsWaitingForInput(shouldWaitForInput); // 設定等待狀態
-	                  // --- 🔼 [修改] --------------------
-	                  setTabs(prevTabs => {
-	                      // 確保只更新當前活躍的 Tab
-	                      const targetTab = prevTabs.find(t => t.id === activeTabId && t.type === 'code');
-	                      if (!targetTab) return prevTabs;
-	                      
-	                      const newTabs = prevTabs.map(t => {
-	                          if (t.id === activeTabId && t.type === 'code') {
-	                              // 將新收到的 data 附加到現有的 output 後面
-	                              // 如果之前是 '執行中...', 就替換掉
-	                              const currentOutput = t.output === '執行中...' ? '' : t.output;
-	                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
-	                          }
-	                          return t;
-	                      });
-	                      return newTabs;
-	                  });
-              });
-
-              // 監聽程式結束事件
-              newSocket.on('terminal_exit', (message) => {
-                  setTabs(prevTabs => prevTabs.map(t => {
-                    if (t.id === activeTabId && t.type === 'code') {
-                      const currentOutput = t.output === '執行中...' ? '' : t.output;
-                      // ✅ 只在 message 有內容時才加上
-                      if (message && message.trim() !== "null") {
-                        return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
-                      }
-                      // 否則只清除「執行中...」狀態，不附加訊息
-                      return { ...t, output: currentOutput, error: '' };
-                    }
-                    return t;
-                  }));
-                  setIsExecuting(false); // 標記為執行結束
-                });
-              // 監聽後端產生的錯誤 (例如 Python 啟動失敗)
-              newSocket.on('terminal_error', (errorMessage) => {
-                    setTabs(prevTabs => prevTabs.map(t => {
-                        if (t.id === activeTabId && t.type === 'code') {
-                          return { ...t, output: '', error: errorMessage };
-                        }
-                        return t;
-                    }));
-                    setIsExecuting(false); // 標記為執行結束
-                });
-
-
-              // 清理函數：當組件卸載或依賴項變化時斷開連線
-              return () => {
-                  console.log('[Socket.IO] 清理連線...');
-                  newSocket.disconnect();
-              };
-          } else if (socket) {
-                // 如果登出或離開學習頁面，斷開連線
-                console.log('[Socket.IO] 登出或離開頁面，斷開連線...');
-                socket.disconnect();
-                setSocket(null);
-          }
-      }, [isLoggedIn, page, activeTabId]); // 加入 activeTabId 確保監聽器能更新正確的 tab
-      // --- 🔼 [新增] --------------------------
-// --- 🔽 [新增] 自動聚焦效果 ---
-	      useEffect(() => {
-	          if (isWaitingForInput && terminalOutputRef.current) {
-	              const outputDiv = terminalOutputRef.current;
-		              outputDiv.focus();
-		              const range = document.createRange();
-		              const sel = window.getSelection();
-			              // 確保有內容可以定位
-			              if (outputDiv.lastChild) {
-			                  // 嘗試將游標定位到最後一個子節點的末尾
-			                  range.setStartAfter(outputDiv.lastChild);
-			                  range.collapse(true);
-			                  sel.removeAllRanges();
-			                  sel.addRange(range);
-			              } else {
-			                  // 如果沒有子節點，直接定位在父節點的開頭
-			                  range.setStart(outputDiv, 0);
-			                  range.collapse(true);
-			                  sel.removeAllRanges();
-			                  sel.addRange(range);
-			              }
-	          }
-	      }, [isWaitingForInput, activeTab?.output]); // 當 isWaitingForInput 變化時觸發
-	      // --- 🔼 [新增] ------------------
-
-      const showMessageModal = (msg) => {
-        setMessage(msg);
-        setShowMessage(true);
-        setTimeout(() => setShowMessage(false), 2000);
-      };
-
-      const handleLogout = () => {
-        localStorage.removeItem('studentId');
-        localStorage.removeItem('studentName');
-        localStorage.removeItem(`progress_${studentId}`);
-        setIsLoggedIn(false);
-        setPage('auth');
-        setStudentId('');
-        setStudentName('');
-        setPassword('');
-        setCourses([]);
-        setTabs([]);
-        setActiveTabId(null);
-        setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-        showMessageModal('您已成功登出。');
-      };
-
-      const handleAction = async (event) => {
-        event.preventDefault();
-        const currentStudentId = studentId; // Capture studentId from state for this action
-        if (!currentStudentId.trim() || !password.trim() || (!isLoginView && !studentName.trim())) {
-          showMessageModal('所有欄位皆為必填。');
-          return;
-        }
-        const backendUrl = 'https://codemate-aezk.onrender.com';
-        const endpoint = isLoginView ? `${backendUrl}/api/login` : `${backendUrl}/api/register`;
-        const payload = isLoginView ? { studentId: currentStudentId, password } : { studentId: currentStudentId, name: studentName, password };
-        
-        try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                if (isLoginView) {
-                    localStorage.setItem('studentId', currentStudentId);
-                    localStorage.setItem('studentName', data.name);
-                    setStudentId(currentStudentId); // <<< --- FIX: Ensure state is set immediately
-                    setIsLoggedIn(true);
-                    setWelcomeMessage(`歡迎回來, ${data.name} (${currentStudentId})!`);
-                    showMessageModal(data.message || '登入成功！');
-                    setPage('intro');
-                } else {
-                    showMessageModal(data.message || '註冊成功！請使用您的學號登入。');
-                    setIsLoginView(true);
-                    setStudentId('');
-                    setStudentName('');
-                    setPassword('');
-                }
-            } else {
-                showMessageModal(`${isLoginView ? '登入' : '註冊'}失敗: ${data.message}`);
-            }
-        } catch (error) {
-            console.error('請求失敗:', error);
-            showMessageModal('與伺服器連線失敗，請檢查後端伺服器是否正在運行。');
-        }
-      };
-
-      const saveConversation = async (messagesToSave) => {
-        const currentStudentId = localStorage.getItem('studentId');
-        if (!currentStudentId || currentStudentId.trim() === '') {
-            console.error("無法儲存：學生 ID 為空。請重新登入再試。");
-            return;
-        }
-        try {
-            const res = await fetch('https://codemate-aezk.onrender.com/api/log/conversation', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    studentId: currentStudentId,
-                    conversation: messagesToSave
-                })
-            });
-            if (!res.ok) {
-                const errorData = await res.json();
-                console.error("儲存對話失敗:", errorData.message);
-            }
-        } catch (error) {
-            console.error("無法儲存對話紀錄:", error);
-        }
-      };
-      
-// 舊的 handleCodeKeyDown 已經被新的 useCallback 版本取代，這裡不需要保留。
-
-      // --- 🔼 [修改] -----------------------------------------
-
-      const handleSendChat = async () => {
-        if (!chatInput.trim() || isAiResponding) return;
-
-        const currentStudentId = localStorage.getItem('studentId');
-        if (!currentStudentId) {
-            const diagnosticMessage = { 
-                id: Date.now(), 
-                sender: 'ai', 
-                content: '診斷錯誤：找不到學生 ID，無法儲存對話。請重新登入後再試一次。', 
-                timestamp: new Date().toISOString() 
-            };
-            setChatMessages(prev => [...prev, diagnosticMessage]);
-            return; 
-        }
-
-        setIsAiResponding(true);
-        const userMessage = { id: Date.now(), sender: 'user', content: chatInput, timestamp: new Date().toISOString() };
-        const thinkingMessageId = Date.now() + 1; 
-        const thinkingMessage = { id: thinkingMessageId, sender: 'ai', content: 'AI 助教正在思考...', timestamp: new Date().toISOString() };
-
-        const messagesForApi = [...chatMessages, userMessage];
-        setChatMessages([...messagesForApi, thinkingMessage]);
-        setChatInput('');
-
-        const backendUrl = 'https://codemate-aezk.onrender.com';
-        const apiUrl = `${backendUrl}/api/chat`;
-
-        const systemPrompt = "你是一位 CodeMate 學習平台上的 Python 程式設計助教。你的核心任務是引導學生完成他們的實作作業，而不是直接給出完整答案。平台上已經有詳細的 PPT 教材，所以你不需要從頭解釋基本概念。當學生提問時，請遵循以下原則：\n\n1. **例外規則（直接回答）**：如果使用者的問題**一開頭**的內容是 `（直接回答）`，請**不要**使用第 3 點的引導式提問。請直接給予具體的建議，或是告訴他們在哪個章節可以找到答案。\n\n2. **不提供完整程式碼**：絕對不要直接給出完整的程式碼解答。**即使在「直接回答」模式下，也應避免給出完整程式碼**，而是提供解題思路或關鍵函式。\n\n3. **使用引導式提問（預設行為）**：透過提問來引導學生思考。例如：「你覺得這個迴圈的目的是什麼？」、「這個變數應該在哪裡宣告會比較好？」、「如果輸入是 0，你這段程式會發生什麼事？」\n\n4. **提供小提示**：給予方向性的提示或相關的關鍵字，讓學生可以自己去查閱 PPT 或思考。例如：「也許你可以回想一下第六章關於 list 的操作方法。」、「這裡可能需要用到 if/else 的判斷喔。」\n\n5. **分解問題**：引導學生將大問題拆解成數個小步驟來完成。\n\n6. **保持鼓勵與耐心**：維持友善且鼓勵的語氣，讓學生感覺你是在跟他一起解決問題的夥伴。請務必使用繁體中文回答。";
-
-        const apiHistory = messagesForApi.map(msg => ({
-            role: msg.sender === 'ai' ? 'model' : 'user',
-            parts: [{ text: msg.content }]
-        }));
-        
-        const payload = { 
-            contents: apiHistory, 
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            studentId: currentStudentId 
-        };
-
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => null); 
-                const message = errorData?.error?.message || `API 請求失敗，狀態碼: ${response.status}`;
-                throw new Error(message);
-            }
-
-            const result = await response.json();
-            const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我現在無法回答。";
-            
-            const finalMessages = messagesForApi.concat({
-                id: thinkingMessageId,
-                sender: 'ai',
-                content: aiText,
-                timestamp: new Date().toISOString()
-            });
-
-            setChatMessages(finalMessages);
-            saveConversation(finalMessages);
-
-        } catch (error) {
-            console.error("Gemini API 代理錯誤:", error);
-            const errorMessageContent = `抱歉，發生錯誤：${error.message}`;
-            
-            const errorMessages = messagesForApi.concat({
-                id: thinkingMessageId,
-                sender: 'ai',
-                content: errorMessageContent,
-                timestamp: new Date().toISOString()
-            });
-            setChatMessages(errorMessages);
-            saveConversation(errorMessages);
-        } finally {
-            setIsAiResponding(false);
-        }
-      };
-
-      const handleCourseSelect = (course) => {
-        setSelectedCourse(course);
-        const courseModules = mockModules[course.id] || [];
-        setModules(courseModules);
-        setExpandedModules({});
-        if (courseModules.length > 0) {
-          const firstModule = courseModules[0];
-          const initialModule = (firstModule.submodules && firstModule.submodules.length > 0) ? firstModule.submodules[0] : firstModule;
-          handleModuleSelect(initialModule);
-          if (firstModule.submodules) {
-            setExpandedModules({ [firstModule.id]: true });
-          }
-        } else {
-          setCurrentModule(null);
-          setTabs([]);
-          setActiveTabId(null);
-        }
-      };
-      
-      const toggleModuleExpansion = (moduleId) => {
-          setExpandedModules(prev => ({...prev, [moduleId]: !prev[moduleId]}));
-      };
-
-      const handleModuleSelect = (module, isLoading = false) => {
-        setCurrentModule(module);
-        if (!isLoading) {
-          const newTab = { id: nextTabId, type: 'code', title: 'Code 1', content: '', output: '', error: '' };
-          setTabs([newTab]);
-          setActiveTabId(newTab.id);
-          setNextTabId(prev => prev + 1);
-        }
-      };
-      
-      const handleAddTab = (type) => {
-        const newTabNumber = tabs.filter(t => t.type === type).length + 1;
-        const newTab = {
-          id: nextTabId,
-          type: type,
-          title: type === 'code' ? `Code ${newTabNumber}` : `Note ${newTabNumber}`,
-          content: '',
-          ...(type === 'code' && { output: '', error: '' })
-        };
-        setTabs([...tabs, newTab]);
-        setActiveTabId(newTab.id);
-        setNextTabId(prev => prev + 1);
-      };
-
-      const handleTabContentChange = useCallback((id, newContent) => {
-        // 使用 useCallback 避免 CodeMirror 因為函數引用變化而重新渲染
-        setTabs(prevTabs => prevTabs.map(tab => tab.id === id ? { ...tab, content: newContent } : tab));
-      }, []); // 空依賴陣列表示此函數永不改變
-      
-      // --- 🔽 [修改] handleRunCode - 改用 WebSocket ---
-      const handleRunCode = (tabId) => {
-          const tab = tabs.find(t => t.id === tabId);
-          if (!tab || !socket || isExecuting) return; // 檢查 socket 是否存在且沒有程式在執行中
-
-          setIsExecuting(true); // 標記為正在執行
-          // 清空之前的輸出和錯誤，並顯示 "執行中..."
-          setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
-
-          // 使用 socket.emit 發送程式碼到後端
-          socket.emit('run_code', tab.content);
-
-          // 我們不再需要 try...catch 或 await fetch
-          // 結果將透過 socket.on('terminal_output', ...) 非同步地接收
-      };
-      // --- 🔽 [新增] 停止程式碼執行的函數 ---
-      const handleStopCode = () => {
-          // 確保 socket 存在，且有程式正在執行中
-          if (!socket || !isExecuting) return; 
-
-          console.log("[Socket.IO] 正在發送 'stop_code' 事件...");
-          // 向後端發送 'stop_code' 事件
-          socket.emit('stop_code');
-          
-          // 注意：我們「不要」在這裡設定 setIsExecuting(false)
-          // 我們應該等待後端回傳 'terminal_exit' 事件，
-          // 這樣狀態才會 100% 同步
-      };
-      // --- 🔼 [新增] --------------------------
-
-      // --- 🔽 [修改] 處理終端機輸入 (加入輸入回顯) ---
-	    const handleTerminalInput = useCallback((input) => {
-	        if (!socket || !isExecuting || !isWaitingForInput) return;
-	
-	        console.log(`[Socket.IO] 正在發送終端機輸入: ${input.trim()}`);
-	        // 1. 發送輸入到後端
-	        socket.emit('terminal_input', input);
-	
-	        // 2. 清空輸入框並取消等待狀態
-	        setIsWaitingForInput(false);
-	
-	        // 3. 將輸入內容回顯到輸出區
-	        // 由於我們使用 contenteditable，回顯邏輯需要調整
-	        // 這裡我們只發送，並讓後續的輸出事件來處理回顯
-	        // 為了確保使用者輸入的內容能被看到，我們將其作為一個臨時輸出
-	        setTabs(prevTabs => prevTabs.map(t => {
-	            if (t.id === activeTabId && t.type === 'code') {
-	                // 確保回顯的內容是使用者輸入的內容
-	                // 由於 contenteditable 已經包含了使用者輸入的文字，這裡只需要確保狀態同步
-	                // 我們將輸入的內容附加到 output 中，並在末尾加上換行
-	                return { ...t, output: t.output + input.trim() + '\n' };
-	            }
-	            return t;
-	        }));
-	        
-	        // 由於 contenteditable 的特性，我們需要手動將其設為不可編輯
-	        // 否則使用者可以繼續輸入
-	        if (terminalOutputRef.current) {
-	            terminalOutputRef.current.contentEditable = 'false';
-	        }
-	    }, [socket, isExecuting, isWaitingForInput, activeTabId, terminalOutputRef]); // 修正依賴
-
-    // 處理 Shift+Enter 執行程式碼
-    const handleCodeKeyDown = useCallback((cm, event, tabId) => {
-        // 檢查是否為 Shift + Enter
-        if (event.shiftKey && event.key === 'Enter') {
-            event.preventDefault(); // 阻止 CodeMirror 預設的換行行為
-            // 呼叫 handleRunCode
-            // 注意：這裡需要確保 handleRunCode 能夠正確執行，
-            // 由於 handleRunCode 依賴 activeTabId，我們需要確保它在 scope 內
-            // 由於 handleRunCode 已經被 useCallback 包裹，我們可以直接呼叫它
-            handleRunCode(tabId); 
-            return true; // 告訴 CodeMirror 已經處理了這個事件
-        }
-        return false;
-    }, [handleRunCode]); // 依賴 handleRunCode
-
-    // --- 🔼 [新增] Shift+Enter 處理 ---
-// 舊的 handleTerminalInput 已經被新的 useCallback 版本取代，這裡不需要保留。
-      // --- 🔼 [修改] --------------------
-      
-      const handleRemoveTab = (id) => {
-        const tabToRemoveIndex = tabs.findIndex(tab => tab.id === id);
-        const newTabs = tabs.filter(tab => tab.id !== id);
-        if (newTabs.length > 0 && activeTabId === id) {
-            setActiveTabId(newTabs[Math.max(0, tabToRemoveIndex - 1)].id);
-        } else if (newTabs.length === 0) {
-            setActiveTabId(null);
-        }
-        setTabs(newTabs);
-      };
-      
-      const handleDownloadTabContent = async (tab) => {
-        if (!tab) return;
-        
-        const fileExtension = tab.type === 'code' ? '.py' : '.txt';
-        const fileName = `${tab.title.replace(/\s+/g, '_')}${fileExtension}`;
-        const content = tab.content;
-
-        // 使用現代的 File System Access API (如果可用)
-        if (window.showSaveFilePicker) {
-            try {
-                const options = {
-                    suggestedName: fileName,
-                    types: [{
-                        description: tab.type === 'code' ? 'Python File' : 'Text File',
-                        accept: { 'text/plain': [fileExtension] },
-                    }],
-                };
-                const handle = await window.showSaveFilePicker(options);
-                const writable = await handle.createWritable();
-                await writable.write(content);
-                await writable.close();
-            } catch (err) {
-                // 如果使用者取消儲存對話框，會觸發 AbortError，我們忽略它
-                if (err.name !== 'AbortError') {
-                    console.error('儲存檔案失敗:', err);
-                }
-            }
-        } else {
-            // 舊版瀏覽器的備用方案
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName;
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-      };
-      // [新] 打開測驗時，重置所有狀態
-      const handleOpenQuiz = (quizModule) => {
-          setCurrentQuiz(quizModule);
-          setCurrentQuestionIndex(0); // 從第一題開始
-          setSelectedAnswer(null);
-          setCurrentFeedback(null);
-          setIsQuizComplete(false);
-          setIsQuizModalOpen(true);
-      };
-
-      // [新] 提交「當前」問題的答案
-      const handleSubmitAnswer = async () => {
-          if (!selectedAnswer || !currentQuiz) return;
-
-          const currentStudentId = localStorage.getItem('studentId');
-          const question = currentQuiz.questions[currentQuestionIndex];
-          const isCorrect = (selectedAnswer === question.answer);
-          // [FIX] 立即檢查是否為最後一題
-          const isLastQuestion = (currentQuestionIndex === currentQuiz.questions.length - 1); 
-
-          // 1. 顯示即時回饋
-          setCurrentFeedback(isCorrect ? "答對了！" : `答錯了，正確答案是: ${question.answer}`);
-
-          // 2. [FIX] 如果是最後一題，立即設定為完成狀態 (在 API 呼叫前)
-          // 這樣就不會短暫顯示 "下一題" 按鈕
-          if (isLastQuestion) {
-              setIsQuizComplete(true);
-          }
-
-          // 3. 準備 payload
-          const payload = {
-              studentId: currentStudentId,
-              quizId: currentQuiz.id.toString(),
-              questionId: question.id,
-              answer: selectedAnswer,
-              isCorrect: isCorrect
-          };
-
-          // 4. 呼叫後端 API 儲存這筆作答 (非同步執行)
-          try {
-              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz/attempt', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
-              });
-              if (!res.ok) throw new Error("儲存答案失敗");
-              
-              const data = await res.json();
-              setQuizProgress(data.newProgress.quizzes || quizProgress); 
-
-          } catch (error) {
-              console.error("儲存測驗 API 失敗:", error);
-              showMessageModal(`儲存作答紀錄失敗: ${error.message}`);
-          }
-      };
-
-      // [新] 換到下一題
-      const handleNextQuestion = () => {
-          // 重設狀態
-          setSelectedAnswer(null);
-          setCurrentFeedback(null); // <-- [FIX] 清除上一題的回饋
-          setCurrentQuestionIndex(prev => prev + 1);
-      };
-
-      // --- 🔽 [新增] 儲存測驗進度到資料庫 ---
-      const saveQuizProgressToDB = async (newProgress) => {
-          // 從 localStorage 獲取當前 studentId，在 helper 函數中這比依賴 state 更穩定
-          const currentStudentId = localStorage.getItem('studentId');
-          if (!currentStudentId) {
-              console.error("無法儲存測驗進度：找不到 studentId");
-              return;
-          }
-
-          try {
-              const res = await fetch('https://codemate-aezk.onrender.com/api/progress/quiz', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      studentId: currentStudentId,
-                      progress: newProgress
-                  })
-              });
-              if (!res.ok) {
-                  console.error("儲存測驗進度到 DB 失敗");
-              }
-          } catch (error) {
-              console.error("儲存測驗進度 API 請求失敗:", error);
-          }
-      };
-      // --- 🔼 [新增] --------------------------
-
-      const renderQuizModal = () => {
-        if (!isQuizModalOpen || !currentQuiz) return null;
-
-        // 從 state 中取得當前題目
-        const question = currentQuiz.questions[currentQuestionIndex];
-        const totalQuestions = currentQuiz.questions.length;
-
-        return (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 text-white rounded-lg shadow-xl w-full max-w-lg min-h-[300px] flex flex-col">
-              <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                <h3 className="text-xl font-bold text-teal-400">{currentQuiz.title}</h3>
-                {!isQuizComplete && (
-                  <span className="text-sm text-slate-400">第 {currentQuestionIndex + 1} / {totalQuestions} 題</span>
-                )}
-              </div>
-
-              {/* --- 顯示題目或測驗完成 --- */}
-              <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                {isQuizComplete ? (
-                  // --- 測驗完成畫面 ---
-                  <div className="text-center py-10">
-                    <h4 className="text-2xl font-bold text-green-400 mb-4">測驗完成！</h4>
-                    <p className="text-slate-300">您已完成所有題目，可以關閉此視窗了。</p>
-                  </div>
-                ) : (
-                  // --- 顯示當前題目 ---
-                  question && (
-                    <div key={question.id} className="bg-slate-900 p-4 rounded-md">
-                      <p className="font-semibold mb-3 text-lg">{question.text}</p>
-                      <div className="space-y-2">
-                        {question.type === 'true-false' && (
-                          ['true', 'false'].map(value => (
-                            <label key={value} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === value ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
-                              <input type="radio" name={question.id} value={value} 
-                                checked={selectedAnswer === value}
-                                onChange={() => setSelectedAnswer(value)} 
-                                disabled={!!currentFeedback} // 答過就不能改
-                                className="form-radio text-teal-500 bg-slate-700 border-slate-600" />
-                              <span>{value === 'true' ? 'O (是)' : 'X (否)'}</span>
-                            </label>
-                          ))
-                        )}
-                        {question.type === 'multiple-choice' && question.options.map(option => (
-                          <label key={option} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === option ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
-                            <input type="radio" name={question.id} value={option} 
-                              checked={selectedAnswer === option}
-                              onChange={() => setSelectedAnswer(option)}
-                              disabled={!!currentFeedback} // 答過就不能改
-                              className="form-radio text-teal-500 bg-slate-700 border-slate-600" />
-                            <span>{option}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-
-              {/* --- 顯示回饋 --- */}
-              {currentFeedback && (
-                <div className={`p-4 text-center font-bold ${currentFeedback.startsWith('答對') ? 'text-green-400' : 'text-red-400'}`}>
-                  {currentFeedback}
-                </div>
-              )}
-              {/* --- 顯示按鈕 --- */}
-              <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
-                <button 
-                  onClick={() => setIsQuizModalOpen(false)}
-                  className="bg-slate-600 text-white py-2 px-4 rounded-lg hover:bg-slate-700"
-                >
-                  關閉
-                </button>
-
-                {/* --- 🔽 [修改] 動態按鈕邏輯 --- */}
-                {isQuizComplete ? (
-                  // 1. 測驗已完成 (setIsQuizComplete 為 true) -> 顯示 "重新作答"
-                  <button
-                      onClick={() => handleOpenQuiz(currentQuiz)}
-                      className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
-                  >
-                      重新作答
-                  </button>
-                ) : currentFeedback ? (
-                  // 2. 測驗未完成，但已提交答案 (正在顯示回饋)
-                  // (因為 `handleSubmitAnswer` 的修正, 這只會發生在 "非" 最後一題)
-                  <button 
-                      onClick={handleNextQuestion}
-                      className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700"
-                  >
-                      下一題
-                  </button>
-                ) : (
-                  // 3. 測驗未完成，且尚未提交答案 -> 顯示 "提交答案"
-                  <button
-                      onClick={handleSubmitAnswer}
-                      disabled={!selectedAnswer}
-                      className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 disabled:bg-slate-500"
-                  >
-                      提交答案
-                  </button>
-                )}
-                {/* --- 🔼 [修改] --- */}
-              </div>
-          </div>
-      </div>
-      );
-      };
-      const renderAuthContent = () => {
-        return (
-          <div className="flex flex-col items-center justify-center min-h-screen p-4">
-            <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
-              <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
-                {isLoginView ? '學生登入' : '學生註冊'}
-              </h2>
-              <form className="space-y-6" onSubmit={handleAction}>
-                <div className="flex items-center justify-between">
-                  <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
-                  <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                </div>
-                {!isLoginView && (
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
-                    <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
-                  <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                </div>
-                <div className="pt-4">
-                  <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-                    {isLoginView ? '登入' : '註冊'}
-                  </button>
-                </div>
-                <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
-                  {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
-                </button>
-              </form>
-            </div>
-          </div>
-        );
-      };
-      
-      const renderIntroContent = () => { return(
-          <div className="relative bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
-            <h2 className="text-3xl font-bold text-slate-100 mb-4">歡迎來到 CodeMate！</h2>
-            <p className="text-xl text-slate-300 mb-8">{welcomeMessage}</p>
-            <p className="text-lg text-slate-200 max-w-2xl mx-auto">
-              CodeMate 是一個專為您量身打造的 Python 學習平台。我們提供：
-            </p>
-            <p className="text-left pl-20 text-slate-300 space-y-2 mt-4">
-              <span><strong>豐富的教材</strong>：包含簡報和影片。</span><br />
-              <span><strong>適性化聊天機器人</strong>：隨時提問，獲得即時且個人化的解說。</span><br />
-              <span><strong>程式執行區</strong>：讓您能立即練習所學。</span><br />
-            </p>
-            <div className="flex justify-end pt-8">
-              <button onClick={() => setPage('learning')} className="bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-                開始學習
-              </button>
-            </div>
-          </div>
-      )};
-      
-      const renderLearningContent = () => {        
-        return (
-          <div className="split-container p-2 gap-2 bg-slate-950">
-            {/* 左側區塊 */}
-            <div id="left-pane" className="flex flex-col gap-2">
-                {/* 教材區 */}
-                <div id="material-pane" className="flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-lg">
-                    {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full rounded-lg" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
-                    {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
-                    {currentModule?.type === 'quiz' && (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                        <h2 className="text-2xl font-bold text-teal-300 mb-4">{currentModule.title}</h2>
-                        <p className="text-slate-300 mb-8">{currentModule.content}</p>
-                        <button 
-                          onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
-                        >
-                          {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
-                        </button>
-                        {/* [修改] 顯示更詳細的進度 (可選) */}
-                        {quizProgress[currentModule.id] && (
-                          <p className="text-slate-400 text-sm mt-4">
-                            狀態：已作答
-                            (上次作答: {new Date(quizProgress[currentModule.id].lastAttempted).toLocaleString()})
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
-                </div>
-                {/* 聊天機器人區 */}
-                <div id="chat-pane" className="flex flex-col bg-slate-900 rounded-lg p-4 border border-slate-800">
-                    <div className="flex-1 overflow-y-auto bg-slate-950 rounded-lg p-3 shadow-sm mb-4">
-                        {chatMessages.map((msg) => (
-                        <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600/70 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
-                            <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}></div>
-                            <div className={`text-xs mt-1 text-right ${msg.sender === 'user' ? 'text-teal-200' : 'text-slate-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                        </div>
-                        ))}
-                        <div ref={messagesEndRef} />
-                    </div>
-                    <div className="flex gap-2">
-                        <textarea
-                          value={chatInput}
-                          onChange={(e) => setChatInput(e.target.value)}
-                          onCompositionStart={() => isComposing.current = true}
-                          onCompositionEnd={() => isComposing.current = false}
-                          onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey && !isComposing.current) {
-                                  e.preventDefault();
-                                  handleSendChat();
-                              }
-                          }}
-                          placeholder={isAiResponding ? "AI 助教正在回覆..." : "輸入你的問題..."}
-                          className="flex-1 p-2 bg-slate-800 border border-slate-700 text-white rounded-lg resize-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:bg-slate-700"
-                          rows="1"
-                          disabled={isAiResponding}
-                        />
-                        <button onClick={handleSendChat} disabled={!chatInput.trim() || isAiResponding} className="bg-teal-600 text-white px-4 rounded-lg hover:bg-teal-700 disabled:bg-slate-600 flex items-center justify-center">
-                          <Icon name="send" className="w-5 h-5"/>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            {/* 右側區塊 */}
-            <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
-                  <div className="flex border-b border-slate-800 p-2 items-center gap-2 overflow-x-auto">
-                      {tabs.map(tab => (
-                          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`flex-shrink-0 flex items-center py-2 px-3 rounded-md cursor-pointer text-sm ${activeTabId === tab.id ? 'bg-slate-800' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
-                              <span>{tab.title}</span>
-                              <button onClick={(e) => {e.stopPropagation(); handleRemoveTab(tab.id);}} className="ml-2 text-slate-500 hover:text-red-400 text-xs">✕</button>
-                          </div>
-                      ))}
-                      <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => handleAddTab('code')} className="text-xs bg-teal-500/10 text-teal-300 px-3 py-1 rounded-full hover:bg-teal-500/20">+ Code</button>
-                        <button onClick={() => handleAddTab('note')} className="text-xs bg-amber-500/10 text-amber-300 px-3 py-1 rounded-full hover:bg-amber-500/20">+ Note</button>
-                      </div>
-                  </div>
-                  {/* Tab 內容區 */}
-                  <div className="flex-1 p-2 overflow-hidden flex flex-col"> {/* 改為 flex flex-col */}
-                      {activeTab?.type === 'code' && (
-                          <div className="h-full flex flex-col">
-                              {/* CodeMirror 編輯器 (保持高度為一半) */}
-                              <div className="h-1/2 overflow-hidden">
-                                  <CodeMirrorEditor
-                                      activeTab={activeTab}
-                                      handleTabContentChange={handleTabContentChange}
-                                      handleCodeKeyDown={handleCodeKeyDown}
-                                  />
-                              </div>
-                                {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
-                              <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
-                                  {/* 執行/下載按鈕 */}
-                                  <div className="flex justify-start items-center gap-2 mb-2">
-                                    <button
-                                      onClick={() => handleRunCode(activeTab.id)}
-                                      disabled={!activeTab || isExecuting}
-                                      className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500"
-                                    >
-                                      {isExecuting ? '執行中...' : '執行'}
-                                    </button>
-
-                                    <button
-                                      onClick={handleStopCode}
-                                      disabled={!isExecuting}
-                                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 text-sm disabled:bg-slate-500"
-                                    >
-                                      停止
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDownloadTabContent(activeTab)}
-                                      className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm"
-                                    >
-                                      下載檔案
-                                    </button>
-                                  </div>
-                                  {/* 輸出/錯誤顯示區 */}
-                                  <div className="flex-1 text-sm space-y-2 overflow-y-auto">
-	                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
-	                                      {(activeTab.output || activeTab.error) && (
-	                                          <div>
-		                                      <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
-		                                                  {activeTab.error ? '錯誤:' : '輸出:'}
-		                                              </strong>
-		                                              {/* --- 🔽 [重構] 輸出區塊改為 contenteditable 實現行內輸入 --- */}
-		                                              <div 
-		                                                  ref={terminalOutputRef} // 新增 ref
-		                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
-		                                                  contentEditable={isExecuting && isWaitingForInput && !activeTab.error} // 只有在等待輸入時才可編輯
-		                                                  suppressContentEditableWarning={true} onCompositionStart={() => isComposing.current = true}
-                                                      onCompositionEnd={() => isComposing.current = false}
-		                                                  onKeyDown={(e) => {
-		                                                      if (e.key === 'Enter' && isExecuting && isWaitingForInput && !isComposing.current) {
-		                                                          e.preventDefault();
-			                                                          // 獲取輸入內容
-			                                                          const outputDiv = terminalOutputRef.current;
-			                                                          const fullText = outputDiv.innerText;
-			                                                          
-			                                                          // 1. 獲取提示詞
-			                                                          const promptText = activeTab.output.split('\n').pop().trim();
-			                                                          
-			                                                          // 2. 獲取使用者輸入部分
-			                                                          // 這裡假設使用者輸入的內容是 fullText 中，activeTab.output 之後的部分
-			                                                          // 由於 contenteditable 會將所有內容視為一個整體，我們需要從 fullText 中減去原始輸出
-			                                                          // 為了簡化，我們只取最後一行，並移除提示詞
-			                                                          const lines = fullText.split('\n');
-			                                                          const lastLine = lines[lines.length - 1];
-			                                                          let userInput = lastLine;
-			                                                          
-			                                                          if (lastLine.startsWith(promptText)) {
-			                                                              userInput = lastLine.substring(promptText.length).trim();
-			                                                          }
-			                                                          
-			                                                          // 3. 發送輸入
-			                                                          handleTerminalInput(userInput + '\n');
-			                                                          
-			                                                          // 4. 清除 contenteditable 內容 (由 handleTerminalInput 處理回顯)
-			                                                          // 由於我們在 handleTerminalInput 中處理了回顯，這裡不需要額外處理
-			                                                          // 關鍵是確保 handleTerminalInput 執行後，contentEditable 被設為 false
-		                                                      }
-		                                                  }}
-		                                              >
-		                                                  {/* 顯示輸出內容 */}
-		                                                  {activeTab.output || activeTab.error}
-		                                              </div>
-		                                              {/* --- 🔼 [重構] -------------------- */}
-		                                          </div>
-		                                      )}
-		                                      {/* --- 🔼 [修改] -------------------- */}
-		                                  </div>
-			                                    {/* --- 🔽 [移除] 終端機輸入框 ---*/}
-			                                    {/* 獨立輸入框已移除，功能整合到 contentEditable 區塊 */}
-			                                    {/* --- 🔼 [移除] -------------------- */}
-			                              </div>
-                          </div>
-                      )}
-                      {activeTab?.type === 'note' && (
-                          <div className="h-full flex flex-col bg-slate-800 rounded-md">
-                            <textarea
-                                value={activeTab.content}
-                                onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
-                                className="w-full p-2 bg-transparent border-none text-slate-200 resize-none flex-1"
-                                placeholder="輸入你的筆記..."
-                            />
-                            <div className="p-2 border-t border-slate-700 flex justify-start">
-                                <button 
-                                    onClick={() => handleDownloadTabContent(activeTab)}
-                                    className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm"
-                                >
-                                    下載筆記
-                                </button>
-                            </div>
-                          </div>
-                      )}
-                      {!activeTab && <div className="text-slate-500 p-4">請新增一個分頁開始。</div>}
-                  </div>
-            </div>
-          </div>
-        );
-      };
-
-      const renderSidebar = () => {
-        if (page !== 'learning') return null;
-
-        return (
-            <div className={`flex-shrink-0 flex flex-col bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
-                {isSidebarOpen && (
-                    <>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-slate-100">課程列表</h2>
-                            <button onClick={() => setIsSidebarOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-800">
-                                <Icon name="menu" className="w-6 h-6"/>
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto -mr-2 pr-2">
-                        {courses.map(course => (
-                        <div key={course.id} className="mb-3">
-                            <div onClick={() => handleCourseSelect(course)} className={`p-3 rounded-lg cursor-pointer transition-all ${selectedCourse?.id === course.id ? 'bg-slate-800' : 'hover:bg-slate-800'}`}>
-                            <h3 className="font-semibold text-slate-200">{course.title}</h3>
-                            </div>
-                            {selectedCourse?.id === course.id && (
-                            <div className="mt-2 pl-2 space-y-1">
-                                {modules.map(module => module.submodules ? (
-                                <div key={module.id}>
-                                    <div onClick={() => toggleModuleExpansion(module.id)} className="flex justify-between items-center p-2 rounded-md cursor-pointer hover:bg-slate-800">
-                                        <span className="font-medium text-sm">{module.title}</span>
-                                        <Icon name="chevron" className="w-5 h-5 text-slate-400" isExpanded={expandedModules[module.id]} />
-                                    </div>
-                                    {expandedModules[module.id] && (
-                                        <div className="pl-4 mt-1 border-l-2 border-slate-700 space-y-1">
-                                            {module.submodules.map(submodule => (
-                                              <div 
-                                                key={submodule.id} 
-                                                onClick={() => handleModuleSelect(submodule)} 
-                                                // [修改後] 方案一：淡色背景
-                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-500/20 text-teal-300 font-semibold' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
-                                              >
-                                                <span>{submodule.title}</span>
-                                                {submodule.type === 'quiz' && quizProgress[submodule.id] && (
-                                                  <span title="已作答" className="text-red-500">✓</span>
-                                                )}
-                                              </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                ) : (
-                                <div key={module.id} onClick={() => handleModuleSelect(module)} className={`p-2 rounded-md cursor-pointer text-sm transition-all ${currentModule?.id === module.id ? 'bg-teal-600 font-semibold text-white' : 'hover:bg-slate-800'}`}>
-                                    {module.title}
-                                </div>
-                                ))}
-                            </div>
-                            )}
-                        </div>
-                        ))}
-                    </div>
-                    </>
-                )}
-                {!isSidebarOpen && (
-                    <div className="flex flex-col items-center">
-                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg hover:bg-slate-800" title="展開課程列表">
-                           <Icon name="menu" className="w-6 h-6"/>
-                        </button>
-                    </div>
-                )}
-            </div>
-        )
-      }
-
-      const renderContent = () => {
-        switch (page) {
-          case 'auth': return renderAuthContent();
-          case 'intro': return <div className="flex items-center justify-center h-full">{renderIntroContent()}</div>;
-          case 'learning': return renderLearningContent();
-          default: return renderAuthContent();
-        }
-      };
-
-      return (
-        <div className="h-full flex flex-col">
-            <header className="h-14 bg-slate-900 border-b border-slate-800 shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold text-teal-400">CodeMate</h1>
-                </div>
-                {isLoggedIn && (
-                    <button onClick={handleLogout} className="bg-red-600 text-white font-semibold py-1.5 px-4 rounded-lg shadow-md hover:bg-red-700 text-sm">
-                        登出
-                    </button>
-                )}
-            </header>
-            <div className="flex flex-1 overflow-hidden">
-                {renderSidebar()}
-                <main className="flex-1 overflow-y-auto">
-                    {renderContent()}
-                </main>
-            </div>
-          
-          {showMessage && (
-            <div className="fixed top-5 right-5 bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
-              {message}
-            </div>
-          )}
-          {renderQuizModal()}
-        </div>
-      );
-    };
-
-    const container = document.getElementById('root');
-    const root = createRoot(container);
-    root.render(<App />);
-</script>
-
-</body>
-</html>
+    // 3. 讀取所有紀錄
+    const allAttempts = await QuizAttempt.find({ studentId: studentId });
+    console.log(`[CodeMate 儲存中 3/4] .find() 找到了 ${allAttempts.length} 筆紀錄`);
+
+    // 4. 重組資料
+    const reconstructedQuizzes = reconstructProgress(allAttempts);
+    console.log(`[CodeMate 儲存中 4/4] 重組後的資料: ${JSON.stringify(reconstructedQuizzes)}`);
+
+    res.status(201).json({ 
+      message: "作答紀錄已儲存", 
+      newProgress: { 
+        quizzes: reconstructedQuizzes
+      } 
+    });
+
+  } catch (error) {
+    console.error("儲存測驗作答的過程中發生了其他錯誤:", error);
+    res.status(500).json({ message: "伺服器內部錯誤", error: error.message });
+  }
+});
+
+
+// [GET API] 取得「所有」測驗進度 (保持不變)
+app.get('/api/progress/quiz/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!studentId) {
+      return res.status(400).json({ message: '缺少學生 ID' });
+    }
+
+    const allAttempts = await QuizAttempt.find({ studentId: studentId });
+    
+    console.log(`[CodeMate 讀取中] 找到 student ${studentId} 的 ${allAttempts.length} 筆作答紀錄`);
+
+    const reconstructedQuizzes = reconstructProgress(allAttempts);
+
+    res.status(200).json({ 
+      progress: { 
+        quizzes: reconstructedQuizzes 
+      } 
+    }); 
+
+  } catch (error) {
+    console.error("讀取測驗進度時發生錯誤:", error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
+// --- 🔼 [FIX] ---------------------------------------------
+
+
+// --- 伺服器啟動 (包含 Socket.IO) ---
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", 
+    methods: ["GET", "POST"]
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log(`[Socket.IO] 一位使用者已連線: ${socket.id}`);
+  
+  let pythonProcess = null; 
+
+  socket.on('run_code', (code) => {
+    console.log(`[Socket.IO] 收到 'run_code' 事件`);
+    if (pythonProcess) {
+      pythonProcess.kill('SIGKILL');
+    }
+    pythonProcess = spawn('python3', ['-u', '-c', code]);
+
+    pythonProcess.stdout.on('data', (data) => {
+      socket.emit('terminal_output', data.toString());
+    });
+    pythonProcess.stderr.on('data', (data) => {
+      socket.emit('terminal_output', data.toString());
+    });
+    pythonProcess.on('close', (code) => {
+      // 通知前端：程式已結束（不顯示退出代碼）
+      socket.emit('terminal_exit', null);
+      pythonProcess = null;
+    });
+    pythonProcess.on('error', (err) => {
+      console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
+      socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
+      pythonProcess = null;
+    });
+  });
+
+  socket.on('terminal_input', (data) => {
+    if (pythonProcess && pythonProcess.stdin) {
+      pythonProcess.stdin.write(data + '\n');
+    }
+  });
+  socket.on('stop_code', () => {
+    if (pythonProcess) {
+      console.log(`[Socket.IO] 收到 'stop_code' 事件，正在終止 ${socket.id} 的進程...`);
+      // 使用 'SIGKILL' 強制終止訊號，這對無限迴圈最有效
+      pythonProcess.kill('SIGKILL');
+      pythonProcess = null; // 清理進程
+      // .kill() 會自動觸發 'close' 事件
+      // 'close' 事件監聽器會發送 'terminal_exit' 給前端
+      // 所以我們這裡不需要額外發送事件
+    } else {
+      console.log(`[Socket.IO] 收到 'stop_code' 事件，但沒有正在運行的進程。`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[Socket.IO] 使用者已離線: ${socket.id}`);
+    if (pythonProcess) {
+      pythonProcess.kill('SIGKILL');
+      console.log('[Python Process] 因連線中斷，已強制結束子進程。');
+    }
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 伺服器正在 http://localhost:${PORT} 上運行 (已啟用 WebSocket)`);
+});
