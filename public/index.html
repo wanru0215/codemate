@@ -1760,7 +1760,7 @@
                 <div id="chat-pane" className="flex flex-col bg-slate-900 rounded-lg p-4 border border-slate-800">
                     <div className="flex-1 overflow-y-auto bg-slate-950 rounded-lg p-3 shadow-sm mb-4">
                         {chatMessages.map((msg) => (
-                        <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-400 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
+                        <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600/60 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
                             <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}></div>
                             <div className={`text-xs mt-1 text-right ${msg.sender === 'user' ? 'text-teal-200' : 'text-slate-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                         </div>
