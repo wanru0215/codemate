@@ -424,6 +424,7 @@
       const [currentQuiz, setCurrentQuiz] = useState(null); // 存放當前正在作答的測驗模組
       const [quizAnswers, setQuizAnswers] = useState({}); // 存放使用者的答案 { q1: 'true', q2: 'Array (陣列)' }
       const [quizProgress, setQuizProgress] = useState({}); // 存放所有測驗的進度 { 1014: { completed: true, errors: 0 } }
+      const [worksheetAnswers, setWorksheetAnswers] = useState({}); // 存放學習單答案 { 'q1-1': '答案內容', 'q1-2': '...' }
       
       // Mock Data
       const mockCourses = [
@@ -463,6 +464,12 @@
                               answer: 'Array (陣列)' // Python 內建的是 List
                           }
                       ]
+                    },
+                    { id: 1017,
+                      title: "Ch1 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
                     }  
                 ]
               },
@@ -1614,6 +1621,84 @@
             document.body.removeChild(link);
         }
       };
+      
+      // --- [新子] 學習單相關函數 ---
+      const handleSaveWorksheet = async () => {
+          const currentStudentId = localStorage.getItem('studentId');
+          if (!currentStudentId) {
+              showMessageModal('需要登入以保存學習單');
+              return;
+          }
+          
+          // 將答案儲存到 localStorage
+          const worksheetKey = `worksheet_${currentModule.id}_${currentStudentId}`;
+          localStorage.setItem(worksheetKey, JSON.stringify(worksheetAnswers));
+          showMessageModal('學習單已保存！');
+      };
+      
+      const handleDownloadWorksheet = async () => {
+          if (!currentModule || !currentModule.type === 'worksheet') return;
+          
+          // 標題
+          const title = currentModule.title || 'Python 程式設計：運算思維學習單';
+          
+          // 組不學習單內容（使用答案填充）
+          let docContent = `${title}\n\n`;
+          docContent += `要解決的問題（主題）： 製作一個猴數字遇戲 (1-100)\n\n`;
+          
+          // 1. 拆解問題
+          docContent += `1. 拆解問題\n`;
+          docContent += `將一個複雜的大問題，分解成數個易於管理的小問題。\n\n`;
+          docContent += `❓ 這個 Python 程式的最終「目標」是什麼？\n`;
+          docContent += `答：${worksheetAnswers['q1-1'] || '未作答'}\n\n`;
+          docContent += `❓ 為了達成這個目標，程式需要完成哪些「主要功能」？\n`;
+          docContent += `答：${worksheetAnswers['q1-2'] || '未作答'}\n\n`;
+          docContent += `❓ 每個主要功能，還可以再細分成哪些「更小的步驟」？\n`;
+          docContent += `答：${worksheetAnswers['q1-3'] || '未作答'}\n\n`;
+          
+          // 2. 樣式辨識
+          docContent += `2. 樣式辨識\n`;
+          docContent += `在小問題中，找出重複出現的模式、趨勢或相似性。\n\n`;
+          docContent += `❓ 在拆解的步驟中，有哪些任務是「重複出現」的？\n`;
+          docContent += `答：${worksheetAnswers['q2-1'] || '未作答'}\n\n`;
+          docContent += `❓ 這個問題和「以前解決過的問題」有什麼相似之處嘓？\n`;
+          docContent += `答：${worksheetAnswers['q2-2'] || '未作答'}\n\n`;
+          docContent += `❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？\n`;
+          docContent += `答：${worksheetAnswers['q2-3'] || '未作答'}\n\n`;
+          
+          // 3. 抽象化 / 提取重點
+          docContent += `3. 抽象化 / 提取重點\n`;
+          docContent += `專注於最重要的資訊，忽略不相關的細節。\n\n`;
+          docContent += `❓ 程式需要哪些「輸入 (Input)」？\n`;
+          docContent += `答：${worksheetAnswers['q3-1'] || '未作答'}\n\n`;
+          docContent += `❓ 程式最終應該產生什麼「輸出 (Output)」？\n`;
+          docContent += `答：${worksheetAnswers['q3-2'] || '未作答'}\n\n`;
+          docContent += `❓ 我們需要用哪些「變數 (Variable)」來儲存「關鍵資訊」？\n`;
+          docContent += `答：${worksheetAnswers['q3-3'] || '未作答'}\n\n`;
+          docContent += `❓ 需要「忽略」哪些不必要的細節？\n`;
+          docContent += `答：${worksheetAnswers['q3-4'] || '未作答'}\n\n`;
+          
+          // 4. 演算法
+          docContent += `4. 演算法\n`;
+          docContent += `設計一個清晰、明確、按部就班的解決方案。\n\n`;
+          docContent += `❓ 請用「條列式」寫下解決問題的「完整步驟順序」。\n`;
+          docContent += `答：${worksheetAnswers['q4-1'] || '未作答'}\n\n`;
+          docContent += `❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辨？\n`;
+          docContent += `答：${worksheetAnswers['q4-2'] || '未作答'}\n\n`;
+          
+          // 建立 Blob 並下載
+          const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${currentModule.title.replace(/\s+/g, '_')}.txt`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          showMessageModal('學習單已下載！');
+      };
+      // --- [新子] 結束 ---
+      
       // [新] 打開測驗時，重置所有狀態
       const handleOpenQuiz = (quizModule) => {
           setCurrentQuiz(quizModule);
@@ -1898,6 +1983,197 @@
                             (上次作答: {new Date(quizProgress[currentModule.id].lastAttempted).toLocaleString()})
                           </p>
                         )}
+                      </div>
+                    )}
+                    {currentModule?.type === 'worksheet' && (
+                      <div className="w-full h-full flex flex-col bg-slate-800 rounded-lg overflow-hidden">
+                        {/* 學習單標題列 */}
+                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-4 flex justify-between items-center flex-shrink-0">
+                          <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleSaveWorksheet()}
+                              className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 text-sm font-semibold"
+                            >
+                              保存
+                            </button>
+                            <button 
+                              onClick={() => handleDownloadWorksheet()}
+                              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 text-sm font-semibold"
+                            >
+                              下載 DOCX
+                            </button>
+                          </div>
+                        </div>
+                        {/* 學習單內容區 */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-200">
+                          <h1 className="text-3xl font-bold text-teal-400 border-b border-slate-700 pb-2 mb-4">Python 程式設計：運算思維學習單</h1>
+                          <p className="text-lg italic text-slate-400">要解決的問題（主題）： 製作一個猴數字遇戲 (1-100)</p>
+
+                          {/* 1. 拆解問題 */}
+                          <div className="space-y-3">
+                            <h2 className="text-xl font-semibold text-teal-300">1. 拆解問題</h2>
+                            <p className="text-sm text-slate-400">將一個複雜的大問題，分解成數個易於管理的小問題。</p>
+                            
+                            <div className="ml-4 space-y-3">
+                              <p className="font-medium">❓ 這個 Python 程式的最終「目標」是什麼？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q1-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-1': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 為了達成這個目標，程式需要完成哪些「主要功能」？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q1-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-2': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 每個主要功能，還可以再細分成哪些「更小的步驟」？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q1-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-3': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2. 樣式辨識 */}
+                          <div className="space-y-3">
+                            <h2 className="text-xl font-semibold text-teal-300">2. 樣式辨識</h2>
+                            <p className="text-sm text-slate-400">在小問題中，找出重複出現的模式、趨勢或相似性。</p>
+                            
+                            <div className="ml-4 space-y-3">
+                              <p className="font-medium">❓ 在拆解的步驟中，有哪些任務是「重複出現」的？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q2-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-1': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 這個問題和「以前解決過的問題」有什麼相似之處嘉？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q2-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-2': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q2-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-3': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 3. 抽象化 / 提取重點 */}
+                          <div className="space-y-3">
+                            <h2 className="text-xl font-semibold text-teal-300">3. 抽象化 / 提取重點</h2>
+                            <p className="text-sm text-slate-400">專注於最重要的資訊，忽略不相關的細節。</p>
+                            
+                            <div className="ml-4 space-y-3">
+                              <p className="font-medium">❓ 程式需要哪些「輸入 (Input)」？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q3-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-1': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 程式最終應該產生什麼「輸出 (Output)」？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q3-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-2': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 我們需要用哪些「變數 (Variable)」來儲存「關鍵資訊」？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q3-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-3': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 需要「忽略」哪些不必要的細節？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q3-4'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-4': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 4. 演算法 */}
+                          <div className="space-y-3">
+                            <h2 className="text-xl font-semibold text-teal-300">4. 演算法</h2>
+                            <p className="text-sm text-slate-400">設計一個清晰、明確、按部就班的解決方案。</p>
+                            
+                            <div className="ml-4 space-y-3">
+                              <p className="font-medium">❓ 請用「條列式」寫下解決問題的「完整步驟順序」。</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q4-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-1': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-40 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+
+                              <p className="font-medium">❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辦？</p>
+                              <div className="answer-box">
+                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                                <textarea 
+                                  value={worksheetAnswers['q4-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-2': e.target.value})}
+                                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                  placeholder="請輸入您的答案..."
+                                ></textarea>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                     {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
