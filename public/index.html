@@ -382,6 +382,8 @@
     }
 
     const App = () => {
+	  const [tabs, setTabs] = useState([]);
+      const [activeTabId, setActiveTabId] = useState(null);
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
       const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
       const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
@@ -416,8 +418,6 @@
       const [expandedModules, setExpandedModules] = useState({});
       const [isSidebarOpen, setIsSidebarOpen] = useState(true);
       
-      const [tabs, setTabs] = useState([]);
-      const [activeTabId, setActiveTabId] = useState(null);
       const [nextTabId, setNextTabId] = useState(1);
       const activeTab = tabs.find(tab => tab.id === activeTabId);
       const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
