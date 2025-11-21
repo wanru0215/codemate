@@ -465,7 +465,7 @@
                           }
                       ]
                     },
-                    { id: 1017,
+                    { id: 1015,
                       title: "Ch1 運算思維學習單",
                       type: 'worksheet',
                       content: "Python 程式設計：運算思維學習單",
@@ -505,7 +505,13 @@
                               answer: '3'
                           }
                       ]
-                    }
+                    },
+                    { id: 1026,
+                      title: "Ch2 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -541,7 +547,13 @@
                               answer: 'float'
                           }
                       ]
-                    }
+                    },
+                    { id: 1037,
+                      title: "Ch3 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -577,7 +589,13 @@
                               answer: 'print(a, b, sep=,)'
                           }
                       ]
-                    }
+                    },
+                    { id: 1047,
+                      title: "Ch4 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -612,7 +630,13 @@
                               answer: '!='
                           }
                       ]
-                    }
+                    },
+                    { id: 1056,
+                      title: "Ch5 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -653,7 +677,13 @@
                               answer: 'my_list[-1]'
                           }
                       ]
-                    }
+                    },
+                    { id: 10612,
+                      title: "Ch6 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -693,7 +723,13 @@
                               answer: '[1, 2, 3, 4]'
                           }
                       ]
-                    }
+                    },
+                    { id: 10711,
+                      title: "Ch7 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -730,7 +766,13 @@
                               answer: 'd["name"]'
                           }
                       ]
-                    }
+                    },
+                    { id: 1098,
+                      title: "Ch9 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               }
           ],
@@ -766,7 +808,13 @@
                               answer: 'list'
                           }
                       ]
-                    }
+                    },
+                    { id: 2015,
+                      title: "Ch10 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -806,7 +854,13 @@
                               answer: 'def'
                           }
                       ]
-                    }
+                    },
+                    { id: 20211,
+                      title: "Ch11 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -845,7 +899,13 @@
                               answer: 'self'
                           }
                       ]
-                    }
+                    },
+                    { id: 20310,
+                      title: "Ch12 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -887,7 +947,13 @@
                               answer: "'w'"
                           }
                       ]
-                    }
+                    },
+                    { id: 20413,
+                      title: "Ch4=14 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               },
               { 
@@ -922,7 +988,13 @@
                               answer: 'raise'
                           }
                       ]
-                    }
+                    },
+                    { id: 2056,
+                      title: "Ch15 運算思維學習單",
+                      type: 'worksheet',
+                      content: "Python 程式設計：運算思維學習單",
+                      worksheetAnswers: {} // 儲存學生的答案
+                    } 
                 ]
               }
           ]
@@ -1101,7 +1173,12 @@
                   setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
               } else if (lastModule) {
                   handleModuleSelect(lastModule, true);
-              }               
+              }
+
+              if (savedProgress.worksheetAnswers) { // [新增] 載入學習單答案
+                  setWorksheetAnswers(savedProgress.worksheetAnswers);
+              }
+
             } catch (error) {
               console.error("讀取進度失敗，將重設為預設值:", error);
               localStorage.removeItem(`progress_${currentStudentId}`);
@@ -1124,6 +1201,9 @@
                   lastModuleId: currentModule.id,
                   tabs: tabs,
                   activeTabId: activeTabId,
+                  quizAnswers: quizAnswers,
+                  quizProgress: quizProgress,
+                  worksheetAnswers: worksheetAnswers,
               };
               localStorage.setItem(`progress_${studentId}`, JSON.stringify(progress));
           }
@@ -1150,7 +1230,7 @@
                   setSocket(null); // 清理 socket 狀態
                   // 如果有程式碼正在執行，可能需要更新 UI 狀態
                   setIsExecuting(false);
-                    setTabs(prevTabs => prevTabs.map(t => t.output === '執行中...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
+                    setTabs(prevTabs => prevTabs.map(t => t.output === 'Running...' ? { ...t, error: '與伺服器連線中斷', output: '' } : t));
                   showMessageModal('與執行服務連線中斷。');
               });
 
@@ -1184,7 +1264,7 @@
 	                          if (t.id === activeTabId && t.type === 'code') {
 	                              // 將新收到的 data 附加到現有的 output 後面
 	                              // 如果之前是 '執行中...', 就替換掉
-	                              const currentOutput = t.output === '執行中...' ? '' : t.output;
+	                              const currentOutput = t.output === 'Running...' ? '' : t.output;
 	                              return { ...t, output: currentOutput + data, error: '' }; // 清除之前的錯誤
 	                          }
 	                          return t;
@@ -1197,7 +1277,7 @@
               newSocket.on('terminal_exit', (message) => {
                   setTabs(prevTabs => prevTabs.map(t => {
                     if (t.id === activeTabId && t.type === 'code') {
-                      const currentOutput = t.output === '執行中...' ? '' : t.output;
+                      const currentOutput = t.output === 'Running...' ? '' : t.output;
                       // ✅ 只在 message 有內容時才加上
                       if (message && message.trim() !== "null") {
                         return { ...t, output: currentOutput + `\n--- ${message} ---`, error: '' };
@@ -1407,6 +1487,7 @@
 
         請根據學生的問題，回應與以上章節最相關的內容。
         `;
+
         const apiHistory = messagesForApi.map(msg => ({
             role: msg.sender === 'ai' ? 'model' : 'user',
             parts: [{ text: msg.content }]
@@ -1522,7 +1603,7 @@
 
           setIsExecuting(true); // 標記為正在執行
           // 清空之前的輸出和錯誤，並顯示 "執行中..."
-          setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: '執行中...', error: '' } : t));
+          setTabs(prevTabs => prevTabs.map(t => t.id === tabId ? { ...t, output: 'Running...', error: '' } : t));
 
           // 使用 socket.emit 發送程式碼到後端
           socket.emit('run_code', tab.content);
@@ -2011,66 +2092,63 @@
                       </div>
                     )}
                     {currentModule?.type === 'worksheet' && (
-                      <div className="w-full h-full flex flex-col bg-slate-800 rounded-lg overflow-hidden">
+                      <div className="w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden">
                         {/* 學習單標題列 */}
-                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-4 flex justify-between items-center flex-shrink-0">
+                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
                           <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
                           <div className="flex gap-2">
                             <button 
                               onClick={() => handleSaveWorksheet()}
-                              className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 text-sm font-semibold"
+                              className="text-xs bg-teal-500/10 text-teal-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
                             >
-                              保存
+                              Save
                             </button>
                             <button 
                               onClick={() => handleDownloadWorksheet()}
-                              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 text-sm font-semibold"
+                              className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
                             >
-                              下載 DOCX
+                              Download
                             </button>
                           </div>
                         </div>
                         {/* 學習單內容區 */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-200">
-                          <h1 className="text-3xl font-bold text-teal-400 border-b border-slate-700 pb-2 mb-4">Python 程式設計：運算思維學習單</h1>
-                          <p className="text-lg italic text-slate-400">要解決的問題（主題）： 製作一個猴數字遇戲 (1-100)</p>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 text-slate-100">
+                          <h1 className="text-2xl font-bold text-teal-400 border-b border-slate-400 pb-2 mb-4">猜數字遊戲</h1>
+                          <p className="text-sm">要解決的主題： 利用 Python 製作一個猜數字遊戲 (1-100)</p>
 
                           {/* 1. 拆解問題 */}
                           <div className="space-y-3">
-                            <h2 className="text-xl font-semibold text-teal-300">1. 拆解問題</h2>
+                            <h2 className="text-medium font-bold text-teal-200">1. 拆解問題</h2>
                             <p className="text-sm text-slate-400">將一個複雜的大問題，分解成數個易於管理的小問題。</p>
                             
                             <div className="ml-4 space-y-3">
-                              <p className="font-medium">❓ 這個 Python 程式的最終「目標」是什麼？</p>
+                              <p className="text-sm font-bold">❓ 這個 Python 程式的最終「目標」是什麼？</p>
                               <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
                                 <textarea 
                                   value={worksheetAnswers['q1-1'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-1': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 為了達成這個目標，程式需要完成哪些「主要功能」？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
+                              <p className="text-sm font-bold">❓ 為了達成這個目標，程式需要完成哪些「主要功能」？</p>
+                              <div className="answer-box">                            
                                 <textarea 
                                   value={worksheetAnswers['q1-2'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-2': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 每個主要功能，還可以再細分成哪些「更小的步驟」？</p>
+                              <p className="text-sm font-bold">❓ 每個主要功能，還可以再細分成哪些「更小的步驟」？</p>
                               <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
                                 <textarea 
                                   value={worksheetAnswers['q1-3'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-3': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
                             </div>
@@ -2078,40 +2156,34 @@
 
                           {/* 2. 樣式辨識 */}
                           <div className="space-y-3">
-                            <h2 className="text-xl font-semibold text-teal-300">2. 樣式辨識</h2>
+                            <h2 className="text-medium font-bold text-teal-200">2. 樣式辨識</h2>
                             <p className="text-sm text-slate-400">在小問題中，找出重複出現的模式、趨勢或相似性。</p>
                             
                             <div className="ml-4 space-y-3">
-                              <p className="font-medium">❓ 在拆解的步驟中，有哪些任務是「重複出現」的？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 在拆解的步驟中，有哪些任務是「重複出現」的？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q2-1'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-1': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 這個問題和「以前解決過的問題」有什麼相似之處嘉？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 這個問題和「以前解決過的問題」有什麼相似之處嘉？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q2-2'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-2': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q2-3'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-3': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
                             </div>
@@ -2119,51 +2191,45 @@
 
                           {/* 3. 抽象化 / 提取重點 */}
                           <div className="space-y-3">
-                            <h2 className="text-xl font-semibold text-teal-300">3. 抽象化 / 提取重點</h2>
+                            <h2 className="text-medium font-bold text-teal-200">3. 抽象化 / 提取重點</h2>
                             <p className="text-sm text-slate-400">專注於最重要的資訊，忽略不相關的細節。</p>
                             
                             <div className="ml-4 space-y-3">
-                              <p className="font-medium">❓ 程式需要哪些「輸入 (Input)」？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 程式需要哪些「輸入 (Input)」？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q3-1'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-1': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 程式最終應該產生什麼「輸出 (Output)」？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 程式最終應該產生什麼「輸出 (Output)」？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q3-2'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-2': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 我們需要用哪些「變數 (Variable)」來儲存「關鍵資訊」？</p>
+                              <p className="text-sm font-bold">❓ 我們需要用哪些「變數 (Variable)」來儲存「關鍵資訊」？</p>
                               <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
                                 <textarea 
                                   value={worksheetAnswers['q3-3'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-3': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 需要「忽略」哪些不必要的細節？</p>
+                              <p className="text-sm font-bold">❓ 需要「忽略」哪些不必要的細節？</p>
                               <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
                                 <textarea 
                                   value={worksheetAnswers['q3-4'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-4': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
                             </div>
@@ -2171,29 +2237,26 @@
 
                           {/* 4. 演算法 */}
                           <div className="space-y-3">
-                            <h2 className="text-xl font-semibold text-teal-300">4. 演算法</h2>
+                            <h2 className="text-medium font-bold text-teal-200">4. 演算法</h2>
                             <p className="text-sm text-slate-400">設計一個清晰、明確、按部就班的解決方案。</p>
                             
                             <div className="ml-4 space-y-3">
-                              <p className="font-medium">❓ 請用「條列式」寫下解決問題的「完整步驟順序」。</p>
+                              <p className="text-sm font-bold">❓ 請用「條列式」寫下解決問題的「完整步驟順序」。</p>
                               <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
                                 <textarea 
                                   value={worksheetAnswers['q4-1'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-1': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-40 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
 
-                              <p className="font-medium">❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辦？</p>
-                              <div className="answer-box">
-                                <p className="text-sm text-slate-500 mb-1">學生作答區：</p>
-                                <textarea 
+                              <p className="text-sm font-bold">❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辦？</p>
+                              <div className="answer-box">                                <textarea 
                                   value={worksheetAnswers['q4-2'] || ''}
                                   onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-2': e.target.value})}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
-                                  placeholder="請輸入您的答案..."
+                                  placeholder="作答區："
                                 ></textarea>
                               </div>
                             </div>
@@ -2240,9 +2303,9 @@
             
             {/* 右側區塊 */}
             <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
-                  <div className="flex border-b border-slate-800 p-2 items-center gap-2 overflow-x-auto">
+                  <div className="flex border-b border-slate-800 p-2 items-center gap-1 overflow-x-auto">
                       {tabs.map(tab => (
-                          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`flex-shrink-0 flex items-center py-2 px-3 rounded-md cursor-pointer text-sm ${activeTabId === tab.id ? 'bg-slate-800' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`flex-shrink-0 flex items-center py-1 px-3 rounded-full cursor-pointer text-xs ${activeTabId === tab.id ? 'bg-slate-800' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
                               <span>{tab.title}</span>
                               <button onClick={(e) => {e.stopPropagation(); handleRemoveTab(tab.id);}} className="ml-2 text-slate-500 hover:text-red-400 text-xs">✕</button>
                           </div>
@@ -2257,7 +2320,7 @@
                       {activeTab?.type === 'code' && (
                           <div className="h-full flex flex-col">
                               {/* CodeMirror 編輯器 (保持高度為一半) */}
-                              <div className="h-1/2 overflow-hidden">
+                              <div className="h-3/5 overflow-hidden">
                                   <CodeMirrorEditor
                                       activeTab={activeTab}
                                       handleTabContentChange={handleTabContentChange}
@@ -2265,30 +2328,30 @@
                                   />
                               </div>
                                 {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
-                              <div className="h-1/2 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
+                              <div className="h-2/5 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
                                   <div className="flex justify-start items-center gap-2 mb-2">
                                     <button
                                       onClick={() => handleRunCode(activeTab.id)}
                                       disabled={!activeTab || isExecuting}
-                                      className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 text-sm disabled:bg-slate-500"
+                                      className="text-xs bg-green-500/10 text-green-300 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-slate-500"
                                     >
-                                      {isExecuting ? '執行中...' : '執行'}
+                                      {isExecuting ? 'Running' : 'Run'}
                                     </button>
 
                                     <button
                                       onClick={handleStopCode}
                                       disabled={!isExecuting}
-                                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 text-sm disabled:bg-slate-500"
+                                      className="text-xs bg-red-700 text-red-400 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-red-500/10"
                                     >
-                                      停止
+                                      Break
                                     </button>
 
                                     <button
                                       onClick={() => handleDownloadTabContent(activeTab)}
-                                      className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm"
+                                      className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
                                     >
-                                      下載檔案
+                                      Download Code
                                     </button>
                                   </div>
                                   {/* 輸出/錯誤顯示區 */}
@@ -2352,24 +2415,24 @@
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
-                          <div className="h-full flex flex-col bg-slate-800 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
                             <textarea
                                 value={activeTab.content}
                                 onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
-                                className="w-full p-2 bg-transparent border-none text-slate-200 resize-none flex-1"
+                                className="text-sm w-full p-2 bg-transparent border-none text-slate-200 resize-none flex-1"
                                 placeholder="輸入你的筆記..."
                             />
                             <div className="p-2 border-t border-slate-700 flex justify-start">
                                 <button 
                                     onClick={() => handleDownloadTabContent(activeTab)}
-                                    className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 text-sm"
+                                    className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
                                 >
-                                    下載筆記
+                                    Download Note
                                 </button>
                             </div>
                           </div>
                       )}
-                      {!activeTab && <div className="text-slate-500 p-4">請新增一個分頁開始。</div>}
+                      {!activeTab && <div className="text-sm text-slate-500 p-4">請新增一個分頁開始。</div>}
                   </div>
             </div>
           </div>
@@ -2460,8 +2523,8 @@
                     <h1 className="text-2xl font-bold text-teal-400">CodeMate</h1>
                 </div>
                 {isLoggedIn && (
-                    <button onClick={handleLogout} className="bg-red-600 text-white font-semibold py-1.5 px-4 rounded-lg shadow-md hover:bg-red-700 text-sm">
-                        登出
+                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-500/30">
+                        LogOut
                     </button>
                 )}
             </header>
