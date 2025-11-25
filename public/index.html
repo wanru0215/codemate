@@ -1252,7 +1252,7 @@
                     saveWorksheetAnswersToDb(currentAnswers);
                     return currentAnswers; // 返回未變更的狀態
                 });
-            }, 60000); // 60秒
+            }, 30000); // 30秒
 
             const handleBeforeUnload = () => {
                 setWorksheetAnswers(currentAnswers => {
