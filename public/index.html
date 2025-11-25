@@ -382,6 +382,21 @@
     }
 
     const App = () => {
+      const topicMap = {
+        1015: "Python 小偵探：觀察程式碼，找出每行程式的功能，並填寫程式流程表",
+        1026: "購物計算小幫手：設計一個程式計算商品總價與折扣",
+        1037: "資料整理高手：判斷資料型態，並將其轉換為適當型態",
+        1047: "互動問答小程式：撰寫程式詢問使用者姓名、年齡，並輸出歡迎訊息",
+        1056: "分數等級判斷：輸入學生分數，判斷等級（A/B/C/D/F）",
+        10612: "班級名單管理：建立一個學生名單串列，完成新增、刪除、查找、排序",
+        10711: "猜數字遊戲：製作一個猜數字遊戲 (1-100)",
+        1098: "聯絡簿小程式：建立一個字典，儲存姓名與電話號碼，並完成新增、查詢與修改",
+        2015: "去重小工具：給定一串重複的資料，使用集合找出唯一值，並計算資料總數",
+        20211: "計算機小函數：設計一個函數可以計算加、減、乘、除，並回傳結果",
+        20310: "小動物養成遊戲：建立一個 Animal 類別（屬性、方法）並建立實例操作",
+        20413: "日誌小管家：讀取一個文字檔，統計字數、行數，並將結果寫入另一個檔案",
+        2056: "防錯小偵探：找出程式錯誤、加上 try-except 處理，確保程式不崩潰"
+      };
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
       const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
       const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
@@ -1743,14 +1758,16 @@
       };
       
       const handleDownloadWorksheet = async () => {
-          if (!currentModule || !currentModule.type === 'worksheet') return;
+          if (!currentModule || currentModule.type !== 'worksheet') return;
           
           // 標題
           const title = currentModule.title || 'Python 程式設計：運算思維學習單';
           
-          // 組不學習單內容（使用答案填充）
+          // 取得對應主題 (使用上方定義的 topicMap)
+          const currentTopic = topicMap[currentModule.id];
+          
           let docContent = `${title}\n\n`;
-          docContent += `要解決的問題（主題）： 製作一個猴數字遇戲 (1-100)\n\n`;
+          docContent += `要解決的問題（主題）： ${currentTopic}\n\n`;
           
           // 1. 拆解問題
           docContent += `1. 拆解問題\n`;
@@ -1767,7 +1784,7 @@
           docContent += `在小問題中，找出重複出現的模式、趨勢或相似性。\n\n`;
           docContent += `❓ 在拆解的步驟中，有哪些任務是「重複出現」的？\n`;
           docContent += `答：${worksheetAnswers['q2-1'] || '未作答'}\n\n`;
-          docContent += `❓ 這個問題和「以前解決過的問題」有什麼相似之處嘓？\n`;
+          docContent += `❓ 這個問題和「以前解決過的問題」有什麼相似之處嗎？\n`;
           docContent += `答：${worksheetAnswers['q2-2'] || '未作答'}\n\n`;
           docContent += `❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？\n`;
           docContent += `答：${worksheetAnswers['q2-3'] || '未作答'}\n\n`;
@@ -1789,7 +1806,7 @@
           docContent += `設計一個清晰、明確、按部就班的解決方案。\n\n`;
           docContent += `❓ 請用「條列式」寫下解決問題的「完整步驟順序」。\n`;
           docContent += `答：${worksheetAnswers['q4-1'] || '未作答'}\n\n`;
-          docContent += `❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辨？\n`;
+          docContent += `❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辦？\n`;
           docContent += `答：${worksheetAnswers['q4-2'] || '未作答'}\n\n`;
           
           // 建立 Blob 並下載
@@ -2113,11 +2130,19 @@
                         </div>
                         {/* 學習單內容區 */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-slate-100">
-                          <h1 className="text-2xl font-bold text-teal-400 border-b border-slate-400 pb-2 mb-4">猜數字遊戲</h1>
-                          <p className="text-sm">要解決的主題： 利用 Python 製作一個猜數字遊戲 (1-100)</p>
+                          
+                          {/* 🔽 [修改] 這裡原本寫死 "猜數字遊戲"，現在改成動態顯示 🔽 */}
+                          <h1 className="text-2xl font-bold text-teal-400 border-b border-slate-400 pb-2 mb-4">
+                             {topicMap[currentModule.id]?.split('：')[0] || "運算思維學習單"}
+                          </h1>
+                          <p className="text-sm">
+                             要解決的主題： {topicMap[currentModule.id] || "利用 Python 製作一個猜數字遊戲 (1-100)"}
+                          </p>
+                          {/* 🔼 [修改結束] 🔼 */}
 
                           {/* 1. 拆解問題 */}
                           <div className="space-y-3">
+                             {/* ... 下面的程式碼保持不變 ... */}
                             <h2 className="text-medium font-bold text-teal-200">1. 拆解問題</h2>
                             <p className="text-sm text-slate-400">將一個複雜的大問題，分解成數個易於管理的小問題。</p>
                             
