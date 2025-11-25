@@ -298,7 +298,7 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
     }
     const record = await LearningRecord.findOne(
         { studentId },
-        { conversation: { $slice: -50 } } // 只取最後 50 筆
+        { conversation: { $slice: -30 } } // 只取最後 30 筆
     );
 
     if (record && record.conversation) {
