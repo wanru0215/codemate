@@ -1413,21 +1413,43 @@
         setTimeout(() => setShowMessage(false), 2000);
       };
 
-      const handleLogout = () => {
-        localStorage.removeItem('studentId');
-        localStorage.removeItem('studentName');
-        localStorage.removeItem(`progress_${studentId}`);
-        setIsLoggedIn(false);
-        setPage('auth');
-        setStudentId('');
-        setStudentName('');
-        setPassword('');
-        setCourses([]);
-        setTabs([]);
-        setActiveTabId(null);
-        setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-        showMessageModal('您已成功登出。');
-      };
+      const handleLogout = async () => {
+		  try {
+			// 🔥 Step 1: 登出前強制儲存學習單
+			if (studentId && worksheetAnswers && Object.keys(worksheetAnswers).length > 0) {
+			  await saveWorksheetAnswersToDb(worksheetAnswers);
+			  console.log("登出時已強制儲存 worksheetAnswers");
+			}
+		  } catch (error) {
+			console.error("登出時儲存學習單失敗：", error);
+		  }
+		
+		  // 🔥 Step 2: 清除 localStorage
+		  localStorage.removeItem('studentId');
+		  localStorage.removeItem('studentName');
+		  localStorage.removeItem(`progress_${studentId}`);
+		
+		  // 🔥 Step 3: 清除前端的登入資料
+		  setIsLoggedIn(false);
+		  setPage('auth');
+		  setStudentId('');
+		  setStudentName('');
+		  setPassword('');
+		  setCourses([]);
+		  setTabs([]);
+		  setActiveTabId(null);
+		  setChatMessages([
+			{
+			  id: 0,
+			  sender: 'ai',
+			  content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？',
+			  timestamp: new Date().toISOString(),
+			}
+		  ]);
+		
+		  showMessageModal('您已成功登出。');
+		};
+
 
       const handleAction = async (event) => {
         event.preventDefault();
