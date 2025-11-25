@@ -1209,20 +1209,73 @@
         }
       }, [page, isLoggedIn, studentId]);
 
-      useEffect(() => {
-          if (page === 'learning' && isLoggedIn && currentModule && studentId) {
-              const progress = {
-                  lastCourseId: selectedCourse?.id,
-                  lastModuleId: currentModule.id,
-                  tabs: tabs,
-                  activeTabId: activeTabId,
-                  quizAnswers: quizAnswers,
-                  quizProgress: quizProgress,
-                  worksheetAnswers: worksheetAnswers,
-              };
-              localStorage.setItem(`progress_${studentId}`, JSON.stringify(progress));
-          }
-      }, [tabs, activeTabId, currentModule, studentId]); // chatMessages is REMOVED from dependency array
+      const saveWorksheetAnswersToDb = useCallback(async (answers) => {
+        if (!studentId || !answers || Object.keys(answers).length === 0) return;
+        try {
+            const response = await fetch('/api/progress/worksheet/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentId, worksheetAnswers: answers }),
+            });
+            if (response.ok) {
+                console.log('學習單答案已成功儲存到 MongoDB');
+            } else {
+                console.error('儲存學習單答案到 MongoDB 失敗:', await response.json());
+            }
+        } catch (error) {
+            console.error('儲存學習單答案時發生網路錯誤:', error);
+        }
+    }, [studentId]);
+
+    useEffect(() => {
+        if (page === 'learning' && isLoggedIn && studentId) {
+            // 立即載入伺服器上的學習單答案
+            const loadWorksheetAnswers = async () => {
+                try {
+                    const response = await fetch(`/api/progress/worksheet/load/${studentId}`);
+                    if (response.ok) {
+                        const answers = await response.json();
+                        setWorksheetAnswers(answers);
+                        console.log('學習單答案已從 MongoDB 載入');
+                    } else {
+                        console.error('從 MongoDB 載入學習單答案失敗:', await response.json());
+                    }
+                } catch (error) {
+                    console.error('載入學習單答案時發生網路錯誤:', error);
+                }
+            };
+            loadWorksheetAnswers();
+
+            const intervalId = setInterval(() => {
+                // 使用 React 的函數式更新來獲取最新的狀態
+                setWorksheetAnswers(currentAnswers => {
+                    saveWorksheetAnswersToDb(currentAnswers);
+                    return currentAnswers; // 返回未變更的狀態
+                });
+            }, 60000); // 60秒
+
+            const handleBeforeUnload = () => {
+                setWorksheetAnswers(currentAnswers => {
+                    if (studentId && currentAnswers && Object.keys(currentAnswers).length > 0) {
+                        const payload = JSON.stringify({ studentId, worksheetAnswers: currentAnswers });
+                        // 使用同步 XHR 確保在頁面卸載前發送
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('POST', '/api/progress/worksheet/save', false); 
+                        xhr.setRequestHeader('Content-Type', 'application/json');
+                        xhr.send(payload);
+                    }
+                    return currentAnswers;
+                });
+            };
+
+            window.addEventListener('beforeunload', handleBeforeUnload);
+
+            return () => {
+                clearInterval(intervalId);
+                window.removeEventListener('beforeunload', handleBeforeUnload);
+            };
+        }
+    }, [page, isLoggedIn, studentId, saveWorksheetAnswersToDb]);
 
       // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
       useEffect(() => {
@@ -1582,13 +1635,22 @@
 
       const handleModuleSelect = (module, isLoading = false) => {
         setCurrentModule(module);
-        // 移除重置 tabs 的邏輯,保留使用者的程式碼和筆記內容
-        // 只在沒有任何 tab 時才建立新的預設 tab
         if (!isLoading && tabs.length === 0) {
           const newTab = { id: nextTabId, type: 'code', title: 'Code 1', content: '', output: '', error: '' };
           setTabs([newTab]);
           setActiveTabId(newTab.id);
           setNextTabId(prev => prev + 1);
+        }
+
+        // 當切換到學習單時，滾動到頂部
+        if (module.type === 'worksheet') {
+            // 使用 setTimeout 確保 DOM 更新後再滾動
+            setTimeout(() => {
+                const materialPane = document.getElementById('material-pane');
+                if (materialPane) {
+                    materialPane.scrollTop = 0;
+                }
+            }, 0);
         }
       };
       
@@ -2113,20 +2175,14 @@
                         {/* 學習單標題列 */}
                         <div className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
                           <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => handleSaveWorksheet()}
-                              className="text-xs bg-teal-500/10 text-teal-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
-                            >
-                              Save
-                            </button>
-                            <button 
-                              onClick={() => handleDownloadWorksheet()}
-                              className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
-                            >
-                              Download
-                            </button>
-                          </div>
+	                          <div className="flex gap-2">
+	                            <button 
+	                              onClick={() => handleDownloadWorksheet()}
+	                              className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
+	                            >
+	                              Download
+	                            </button>
+	                          </div>
                         </div>
                         {/* 學習單內容區 */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-slate-100">
@@ -2150,8 +2206,14 @@
                               <p className="text-sm font-bold">❓ 這個 Python 程式的最終「目標」是什麼？</p>
                               <div className="answer-box">
                                 <textarea 
-                                  value={worksheetAnswers['q1-1'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-1': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q1-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q1-1': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2160,8 +2222,14 @@
                               <p className="text-sm font-bold">❓ 為了達成這個目標，程式需要完成哪些「主要功能」？</p>
                               <div className="answer-box">                            
                                 <textarea 
-                                  value={worksheetAnswers['q1-2'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-2': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q1-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q1-2': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2170,8 +2238,14 @@
                               <p className="text-sm font-bold">❓ 每個主要功能，還可以再細分成哪些「更小的步驟」？</p>
                               <div className="answer-box">
                                 <textarea 
-                                  value={worksheetAnswers['q1-3'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q1-3': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q1-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q1-3': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2187,8 +2261,14 @@
                             <div className="ml-4 space-y-3">
                               <p className="text-sm font-bold">❓ 在拆解的步驟中，有哪些任務是「重複出現」的？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q2-1'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-1': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q2-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q2-1': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2196,8 +2276,14 @@
 
                               <p className="text-sm font-bold">❓ 這個問題和「以前解決過的問題」有什麼相似之處嘉？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q2-2'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-2': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q2-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q2-2': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2205,8 +2291,14 @@
 
                               <p className="text-sm font-bold">❓ 哪些重複的任務，可以用「迴圈 (Loop)」來簡化？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q2-3'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q2-3': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q2-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q2-3': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2222,8 +2314,14 @@
                             <div className="ml-4 space-y-3">
                               <p className="text-sm font-bold">❓ 程式需要哪些「輸入 (Input)」？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q3-1'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-1': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q3-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q3-1': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2231,8 +2329,14 @@
 
                               <p className="text-sm font-bold">❓ 程式最終應該產生什麼「輸出 (Output)」？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q3-2'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-2': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q3-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q3-2': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2241,8 +2345,14 @@
                               <p className="text-sm font-bold">❓ 我們需要用哪些「變數 (Variable)」來儲存「關鍵資訊」？</p>
                               <div className="answer-box">
                                 <textarea 
-                                  value={worksheetAnswers['q3-3'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-3': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q3-3'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q3-3': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2251,8 +2361,14 @@
                               <p className="text-sm font-bold">❓ 需要「忽略」哪些不必要的細節？</p>
                               <div className="answer-box">
                                 <textarea 
-                                  value={worksheetAnswers['q3-4'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q3-4': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q3-4'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q3-4': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2269,8 +2385,14 @@
                               <p className="text-sm font-bold">❓ 請用「條列式」寫下解決問題的「完整步驟順序」。</p>
                               <div className="answer-box">
                                 <textarea 
-                                  value={worksheetAnswers['q4-1'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-1': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q4-1'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q4-1': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-40 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
@@ -2278,8 +2400,14 @@
 
                               <p className="text-sm font-bold">❓ 思考一下「例外情況」：如果使用者輸入的不是數字 ( 例如 "abc") 怎麼辦？</p>
                               <div className="answer-box">                                <textarea 
-                                  value={worksheetAnswers['q4-2'] || ''}
-                                  onChange={(e) => setWorksheetAnswers({...worksheetAnswers, 'q4-2': e.target.value})}
+                                  value={worksheetAnswers[currentModule.id]?.['q4-2'] || ''}
+                                  onChange={(e) => setWorksheetAnswers(prev => ({
+                                    ...prev,
+                                    [currentModule.id]: {
+                                      ...(prev[currentModule.id] || {}),
+                                      'q4-2': e.target.value
+                                    }
+                                  }))}
                                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
                                   placeholder="作答區："
                                 ></textarea>
