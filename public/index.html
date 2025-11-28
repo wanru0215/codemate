@@ -1209,6 +1209,26 @@
           loadData();
         }
       }, [page, isLoggedIn, studentId]);
+      // --- 🔽 [新增] 自動儲存 Tabs 和當前進度到 localStorage ---
+      useEffect(() => {
+        // 只有在已登入且有學號時才儲存
+        if (isLoggedIn && studentId) {
+            const progressData = {
+                lastCourseId: selectedCourse?.id,
+                lastModuleId: currentModule?.id,
+                // 儲存 tabs 的完整內容（包含 code 和 note）
+                tabs: tabs,
+                activeTabId: activeTabId
+            };
+            
+            // 儲存到 localStorage，key 為 progress_學號
+            localStorage.setItem(`progress_${studentId}`, JSON.stringify(progressData));
+            
+            // 可以在 console 查看是否有觸發儲存 (除錯用)
+            // console.log('已自動儲存進度:', progressData);
+        }
+      }, [tabs, activeTabId, currentModule, selectedCourse, isLoggedIn, studentId]);
+      // --- 🔼 [新增] -----------------------------------------
 
       const saveWorksheetAnswersToDb = useCallback(async (answers) => {
         if (!studentId || !answers || Object.keys(answers).length === 0) return;
@@ -1428,7 +1448,6 @@
 		  // 🔥 Step 2: 清除 localStorage
 		  localStorage.removeItem('studentId');
 		  localStorage.removeItem('studentName');
-		  localStorage.removeItem(`progress_${studentId}`);
 		
 		  // 🔥 Step 3: 清除前端的登入資料
 		  setIsLoggedIn(false);
