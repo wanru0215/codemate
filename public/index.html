@@ -1955,7 +1955,7 @@
               if (!res.ok) throw new Error("儲存答案失敗");
               
               const data = await res.json();
-              setQuizProgress(data.newProgress.quizzes || quizProgress); 
+              setQuizProgress(data.progress?.quizzes || quizProgress); 
 
           } catch (error) {
               console.error("儲存測驗 API 失敗:", error);
