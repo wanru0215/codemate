@@ -52,17 +52,19 @@ const learningRecordSchema = new mongoose.Schema({
 });
 const LearningRecord = mongoose.model('LearningRecord', learningRecordSchema, 'LearningRecords');
 
+const quizProgressSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, unique: true },
 
-// 扁平化的測驗紀錄 Schema (保持不變)
-const quizAttemptSchema = new mongoose.Schema({
-  studentId: { type: String, required: true, index: true },
-  quizId: { type: String, required: true, index: true },
-  questionId: { type: String, required: true },
-  answer: { type: String, required: true },
-  isCorrect: { type: Boolean, required: true },
-  timestamp: { type: Date, default: Date.now }
+  // quizzes = { '1014': { 'q1-1': {...}, 'q1-2': {...} }, ... }
+  quizzes: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+
+  lastUpdated: { type: Date, default: Date.now }
 });
-const QuizAttempt = mongoose.model('QuizAttempt', quizAttemptSchema, 'QuizAttempts');
+
+const QuizProgress = mongoose.model('QuizProgress', quizProgressSchema, 'QuizProgress');
 
 // 學習單答案 Schema (新的結構)
 const worksheetAnswerSchema = new mongoose.Schema({
@@ -314,95 +316,55 @@ app.get('/api/log/conversation/:studentId', async (req, res) => {
 });
 // --- 🔼 [FIX] ---------------------------
 
-
-// [POST API] 提交「單一」測驗答案 (保持 v4 偵錯版本)
 app.post('/api/progress/quiz/attempt', async (req, res) => {
-  try {
     const { studentId, quizId, questionId, answer, isCorrect } = req.body;
-    
-    // --- [FIX] 更嚴格的檢查，防止 null 或 undefined ---
-    if (
-      !studentId || 
-      !quizId || 
-      !questionId || 
-      answer === null || answer === undefined || // <-- 檢查 null 和 undefined
-      isCorrect === null || isCorrect === undefined // <-- 檢查 null 和 undefined
-    ) {
-      console.error('[CodeMate 儲存失敗] 偵測到無效請求: 欄位為 null 或 undefined', req.body);
-      return res.status(400).json({ message: "缺少必要的提交欄位 (null/undefined)" });
-    }
-    // --- [FIX] ----------------------------------
 
-    console.log(`[CodeMate 儲存中 1/4] 收到 student ${studentId} 的作答: quizId=${quizId}, qId=${questionId}, answer=${answer}, isCorrect=${isCorrect}`);
-
-    const newAttempt = new QuizAttempt({
-      studentId,
-      quizId,
-      questionId,
-      answer,
-      isCorrect,
-      timestamp: new Date()
-    });
-
-    try {
-      await newAttempt.save();
-      console.log(`[CodeMate 儲存中 2/4] Mongoose .save() 成功!`);
-    } catch (saveError) {
-      // --- [FIX] 這就是我們需要看的錯誤！ ---
-      console.error(`[CodeMate 儲存中 2/4] Mongoose .save() 失敗!`, saveError);
-      // 將 Mongoose 的詳細錯誤回傳給前端，以便在瀏覽器 F12 中看到
-      return res.status(500).json({ message: "Mongoose .save() 失敗", error: saveError.message, fullError: saveError });
+    if (!studentId || !quizId || !questionId) {
+      return res.status(400).json({ message: "缺少必要欄位" });
     }
 
-    // 3. 讀取所有紀錄
-    const allAttempts = await QuizAttempt.find({ studentId: studentId });
-    console.log(`[CodeMate 儲存中 3/4] .find() 找到了 ${allAttempts.length} 筆紀錄`);
+    // 建立存放格式
+    const update = {
+      [`quizzes.${quizId}.${questionId}`]: {
+        answer,
+        isCorrect,
+        timestamp: new Date()
+      },
+      lastUpdated: new Date()
+    };
 
-    // 4. 重組資料
-    const reconstructedQuizzes = reconstructProgress(allAttempts);
-    console.log(`[CodeMate 儲存中 4/4] 重組後的資料: ${JSON.stringify(reconstructedQuizzes)}`);
+    // upsert: true → 如果 student 沒有紀錄就建立新的 document
+    const record = await QuizProgress.findOneAndUpdate(
+      { studentId },
+      { $set: update },
+      { upsert: true, new: true }
+    );
 
-    res.status(201).json({ 
-      message: "作答紀錄已儲存", 
-      newProgress: { 
-        quizzes: reconstructedQuizzes
-      } 
+    res.status(200).json({
+    message: "作答已儲存",
+    progress: {
+      quizzes: record.quizzes
+      }
     });
-
-  } catch (error) {
-    console.error("儲存測驗作答的過程中發生了其他錯誤:", error);
-    res.status(500).json({ message: "伺服器內部錯誤", error: error.message });
-  }
 });
 
-
-// [GET API] 取得「所有」測驗進度 (保持不變)
 app.get('/api/progress/quiz/:studentId', async (req, res) => {
   try {
     const { studentId } = req.params;
-    if (!studentId) {
-      return res.status(400).json({ message: '缺少學生 ID' });
-    }
 
-    const allAttempts = await QuizAttempt.find({ studentId: studentId });
-    
-    console.log(`[CodeMate 讀取中] 找到 student ${studentId} 的 ${allAttempts.length} 筆作答紀錄`);
+    const record = await QuizProgress.findOne({ studentId });
 
-    const reconstructedQuizzes = reconstructProgress(allAttempts);
-
-    res.status(200).json({ 
-      progress: { 
-        quizzes: reconstructedQuizzes 
-      } 
-    }); 
+    res.status(200).json({
+      progress: {
+        quizzes: record ? record.quizzes : {}
+      }
+    });
 
   } catch (error) {
     console.error("讀取測驗進度時發生錯誤:", error);
     res.status(500).json({ message: '伺服器內部錯誤' });
   }
 });
-// --- 🔼 [FIX] ---------------------------------------------
-
 
 // --- 伺服器啟動 (包含 Socket.IO) ---
 const server = http.createServer(app);
