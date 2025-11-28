@@ -2540,7 +2540,7 @@
                   <div className="flex-1 p-2 overflow-hidden flex flex-col"> {/* 改為 flex flex-col */}
                       {activeTab?.type === 'code' && (
                           <div className="h-full flex flex-col">
-                              {/* CodeMirror 編輯器 (保持高度為一半) */}
+                              {/* 1. CodeMirror 編輯器 (保持高度為一半) */}
                               <div className="h-3/5 overflow-hidden">
                                   <CodeMirrorEditor
                                       activeTab={activeTab}
@@ -2548,10 +2548,14 @@
                                       handleCodeKeyDown={handleCodeKeyDown}
                                   />
                               </div>
-                                {/* 輸出/錯誤/輸入區 (佔用剩餘一半空間) */}
-                              <div className="h-2/5 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
-                                  {/* 執行/下載按鈕 */}
-                                  <div className="flex justify-start items-center gap-2 mb-2">
+
+                              {/* 2. 輸出/錯誤/控制區 (修改這裡：移除外層的 overflow-y-auto) */}
+                              <div className="h-2/5 flex flex-col pt-2 gap-2"> {/* ❌ 移除 overflow-y-auto */}
+                                  
+                                  {/* A. 按鈕區 (固定在頂部，不會捲動) */}
+                                  <div className="flex justify-start items-center gap-2 mb-1 px-1 flex-shrink-0 z-10"> {/* 加入 z-10 確保層級 */}
+                                    
+                                    {/* Run 按鈕 + Tooltip */}
                                     <div className="relative group">
                                         <button
                                           onClick={() => handleRunCode(activeTab.id)}
@@ -2560,8 +2564,9 @@
                                         >
                                           {isExecuting ? 'Running' : 'Run'}
                                         </button>
-                                        {/* Tooltip 本體 */}
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-slate-800 text-teal-400 text-xs rounded border border-slate-600 shadow-xl whitespace-nowrap z-50">
+                                        
+                                        {/* Tooltip: 改為顯示在下方 (top-full)，並微調樣式 */}
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block px-2 py-1 bg-slate-800 text-teal-400 text-xs rounded border border-slate-600 shadow-xl whitespace-nowrap z-50">
                                             Shift + Enter
                                         </div>
                                     </div>
@@ -2581,64 +2586,43 @@
                                       Download Code
                                     </button>
                                   </div>
-                                  {/* 輸出/錯誤顯示區 */}
-                                  <div className="flex-1 text-sm space-y-2 overflow-y-auto">
-	                                      {/* --- 🔽 [修改] 顯示輸出或錯誤 --- */}
-	                                      {(activeTab.output || activeTab.error) && (
-	                                          <div>
-		                                      <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
-		                                                  {activeTab.error ? '錯誤:' : '輸出:'}
-		                                              </strong>
-		                                              {/* --- 🔽 [重構] 輸出區塊改為 contenteditable 實現行內輸入 --- */}
-		                                              <div 
-		                                                  ref={terminalOutputRef} // 新增 ref
-		                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
-		                                                  contentEditable={isExecuting && isWaitingForInput && !activeTab.error} // 只有在等待輸入時才可編輯
-		                                                  suppressContentEditableWarning={true} onCompositionStart={() => isComposing.current = true}
-                                                      onCompositionEnd={() => isComposing.current = false}
-		                                                  onKeyDown={(e) => {
-		                                                      if (e.key === 'Enter' && isExecuting && isWaitingForInput && !isComposing.current) {
-		                                                          e.preventDefault();
-			                                                          // 獲取輸入內容
-			                                                          const outputDiv = terminalOutputRef.current;
-			                                                          const fullText = outputDiv.innerText;
-			                                                          
-			                                                          // 1. 獲取提示詞
-			                                                          const promptText = activeTab.output.split('\n').pop().trim();
-			                                                          
-			                                                          // 2. 獲取使用者輸入部分
-			                                                          // 這裡假設使用者輸入的內容是 fullText 中，activeTab.output 之後的部分
-			                                                          // 由於 contenteditable 會將所有內容視為一個整體，我們需要從 fullText 中減去原始輸出
-			                                                          // 為了簡化，我們只取最後一行，並移除提示詞
-			                                                          const lines = fullText.split('\n');
-			                                                          const lastLine = lines[lines.length - 1];
-			                                                          let userInput = lastLine;
-			                                                          
-			                                                          if (lastLine.startsWith(promptText)) {
-			                                                              userInput = lastLine.substring(promptText.length).trim();
-			                                                          }
-			                                                          
-			                                                          // 3. 發送輸入
-			                                                          handleTerminalInput(userInput + '\n');
-			                                                          
-			                                                          // 4. 清除 contenteditable 內容 (由 handleTerminalInput 處理回顯)
-			                                                          // 由於我們在 handleTerminalInput 中處理了回顯，這裡不需要額外處理
-			                                                          // 關鍵是確保 handleTerminalInput 執行後，contentEditable 被設為 false
-		                                                      }
-		                                                  }}
-		                                              >
-		                                                  {/* 顯示輸出內容 */}
-		                                                  {activeTab.output || activeTab.error}
-		                                              </div>
-		                                              {/* --- 🔼 [重構] -------------------- */}
-		                                          </div>
-		                                      )}
-		                                      {/* --- 🔼 [修改] -------------------- */}
-		                                  </div>
-			                                    {/* --- 🔽 [移除] 終端機輸入框 ---*/}
-			                                    {/* 獨立輸入框已移除，功能整合到 contentEditable 區塊 */}
-			                                    {/* --- 🔼 [移除] -------------------- */}
-			                              </div>
+
+                                  {/* B. 輸出/錯誤顯示區 (只有這裡會有捲動條) */}
+                                  <div className="flex-1 text-sm space-y-2 overflow-y-auto p-1"> {/* ✅ overflow-y-auto 移到這裡 */}
+                                      {(activeTab.output || activeTab.error) && (
+                                          <div>
+                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+                                                  {activeTab.error ? '錯誤:' : '輸出:'}
+                                              </strong>
+                                              <div 
+                                                  ref={terminalOutputRef} 
+                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
+                                                  contentEditable={isExecuting && isWaitingForInput && !activeTab.error} 
+                                                  suppressContentEditableWarning={true}
+                                                  onCompositionStart={() => isComposing.current = true}
+                                                  onCompositionEnd={() => isComposing.current = false}
+                                                  onKeyDown={(e) => {
+                                                      if (e.key === 'Enter' && isExecuting && isWaitingForInput && !isComposing.current) {
+                                                          e.preventDefault();
+                                                          const outputDiv = terminalOutputRef.current;
+                                                          const fullText = outputDiv.innerText;
+                                                          const promptText = activeTab.output.split('\n').pop().trim();
+                                                          const lines = fullText.split('\n');
+                                                          const lastLine = lines[lines.length - 1];
+                                                          let userInput = lastLine;
+                                                          if (lastLine.startsWith(promptText)) {
+                                                              userInput = lastLine.substring(promptText.length).trim();
+                                                          }
+                                                          handleTerminalInput(userInput + '\n');
+                                                      }
+                                                  }}
+                                              >
+                                                  {activeTab.output || activeTab.error}
+                                              </div>
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
