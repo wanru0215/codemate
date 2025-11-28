@@ -2559,23 +2559,33 @@
             <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
                   <div className="flex border-b border-slate-800 p-2 items-center gap-1 overflow-x-auto">
                       {/* Tabs 標籤列 */}
+                      {/* Tabs 標籤列 */}
                       {tabs.map(tab => (
                           <div 
                             key={tab.id} 
                             onClick={() => setActiveTabId(tab.id)} 
-                            className={`flex-shrink-0 flex items-center py-1 px-3 rounded-full cursor-pointer text-xs border border-transparent ${activeTabId === tab.id ? 'bg-slate-800 border-slate-700 text-teal-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
-                            title="雙擊可重新命名" // 加上提示
+                            // 1. 移除原本的 title="..." 屬性
+                            // 2. 加入 "group relative" 以支援自訂 Tooltip 定位
+                            className={`group relative flex-shrink-0 flex items-center py-1 px-3 rounded-full cursor-pointer text-xs border border-transparent ${activeTabId === tab.id ? 'bg-slate-800 border-slate-700 text-teal-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
                           >
-                              {/* 🔽 [修改] 判斷是否為編輯模式 */}
+                              {/* 🔽 [新增] 自訂 Tooltip (取代原生的 title 屬性) */}
+                              {/* 只有在「非編輯模式」時才顯示提示，避免擋住輸入框 */}
+                              {editingTabId !== tab.id && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-slate-800 text-slate-300 text-xs rounded border border-slate-600 shadow-xl whitespace-nowrap z-50 pointer-events-none">
+                                      雙擊可重新命名
+                                  </div>
+                              )}
+                              {/* 🔼 [新增結束] */}
+
                               {editingTabId === tab.id ? (
                                   <input 
                                       type="text"
                                       autoFocus
                                       value={tempTabTitle}
                                       onChange={(e) => setTempTabTitle(e.target.value)}
-                                      onBlur={handleTabTitleSave}       // 失去焦點時自動儲存
-                                      onKeyDown={handleTabTitleKeyDown} // 按 Enter 儲存
-                                      onClick={(e) => e.stopPropagation()} // 防止點擊輸入框時觸發切換 Tab
+                                      onBlur={handleTabTitleSave}
+                                      onKeyDown={handleTabTitleKeyDown}
+                                      onClick={(e) => e.stopPropagation()} 
                                       className="bg-slate-950 text-white text-xs px-1 py-0 outline-none border-b border-teal-500 w-24 rounded-none"
                                   />
                               ) : (
@@ -2583,8 +2593,6 @@
                                       {tab.title}
                                   </span>
                               )}
-                              {/* 🔼 [修改結束] */}
-
                               <button onClick={(e) => {e.stopPropagation(); handleRemoveTab(tab.id);}} className="ml-2 text-slate-500 hover:text-red-400 text-xs">✕</button>
                           </div>
                       ))}
