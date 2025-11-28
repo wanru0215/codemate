@@ -2552,13 +2552,19 @@
                               <div className="h-2/5 flex flex-col pt-2 gap-2 overflow-y-auto"> {/* 新增 overflow-y-auto */}
                                   {/* 執行/下載按鈕 */}
                                   <div className="flex justify-start items-center gap-2 mb-2">
-                                    <button
-                                      onClick={() => handleRunCode(activeTab.id)}
-                                      disabled={!activeTab || isExecuting}
-                                      className="text-xs bg-green-500/10 text-green-300 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-slate-500"
-                                    >
-                                      {isExecuting ? 'Running' : 'Run'}
-                                    </button>
+                                    <div className="relative group">
+                                        <button
+                                          onClick={() => handleRunCode(activeTab.id)}
+                                          disabled={!activeTab || isExecuting}
+                                          className="text-xs bg-green-500/10 text-green-300 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-slate-500"
+                                        >
+                                          {isExecuting ? 'Running' : 'Run'}
+                                        </button>
+                                        {/* Tooltip 本體 */}
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-slate-800 text-teal-400 text-xs rounded border border-slate-600 shadow-xl whitespace-nowrap z-50">
+                                            Shift + Enter
+                                        </div>
+                                    </div>
 
                                     <button
                                       onClick={handleStopCode}
