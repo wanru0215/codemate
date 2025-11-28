@@ -441,7 +441,8 @@
       const [quizAnswers, setQuizAnswers] = useState({}); // 存放使用者的答案 { q1: 'true', q2: 'Array (陣列)' }
       const [quizProgress, setQuizProgress] = useState({}); // 存放所有測驗的進度 { 1014: { completed: true, errors: 0 } }
       const [worksheetAnswers, setWorksheetAnswers] = useState({}); // 存放學習單答案 { 'q1-1': '答案內容', 'q1-2': '...' }
-      
+      const [isDataLoaded, setIsDataLoaded] = useState(false); // 🚩 旗標：確保資料載入完才開始存檔
+      const saveTimeoutRef = useRef(null); // 🚩 用來做 Debounce (防抖動) 的計時器
       // Mock Data
       const mockCourses = [
           { id: 1, title: "程式設計 (一)" },
@@ -1094,71 +1095,72 @@
       useEffect(() => {
         const loadData = async () => {
           const currentStudentId = localStorage.getItem('studentId'); 
-          
-          if (!currentStudentId) {
-              console.error("loadData 錯誤：在 localStorage 中找不到 studentId。");
-              return;
-          }
-
-          // --- 🔽 [偵錯 1] 確認學號 ---
-          console.log(`[CodeMate 偵錯 1] loadData 已啟動，學號: ${currentStudentId}`);
-          // --- 🔼 --------------------
+          if (!currentStudentId) return;
 
           // 1. 載入對話紀錄 (保持不變)
           try {
             const res = await fetch(`https://codemate-aezk.onrender.com/api/log/conversation/${currentStudentId}`);
-            if (!res.ok) throw new Error('無法從伺服器讀取對話紀錄');
             const conversation = await res.json();
-            if (conversation && conversation.length > 0) {
-              setChatMessages(conversation);
-            } else {
-              setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
-            }
+            setChatMessages((res.ok && conversation && conversation.length > 0) ? conversation : [{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
           } catch (error) {
-            console.error("讀取對話紀錄失敗:", error);
+            console.error("讀取對話失敗:", error);
             setChatMessages([{ id: 0, sender: 'ai', content: '哈囉！今天有什麼 Python 問題可以幫助您的嗎？', timestamp: new Date().toISOString() }]);
           }
 
-          // 2. 載入測驗進度
+          // 2. 載入測驗進度 (保持不變)
           try {
               const res = await fetch(`https://codemate-aezk.onrender.com/api/progress/quiz/${currentStudentId}`);
-              // --- 🔽 [偵錯 2] 確認 API 回應 ---
-              console.log(`[CodeMate 偵錯 2] 測驗 API 回應狀態: ${res.status}`, res.ok);
-              // --- 🔼 --------------------
               if (res.ok) {
                   const data = await res.json();
-                  // --- 🔽 [偵錯 3] 確認從 API 拿到的原始資料 ---
-                  console.log('[CodeMate 偵錯 3] 拿到的原始進度資料 (data):', JSON.stringify(data));
-                  // --- 🔼 --------------------
+                  setQuizProgress(data.progress?.quizzes || {}); 
+              }
+          } catch (e) { console.error(e); }
+          
+          // 3. 載入學習單答案 (保持不變)
+          try {
+             const res = await fetch(`/api/progress/worksheet/load/${currentStudentId}`);
+             if (res.ok) setWorksheetAnswers(await res.json());
+          } catch(e) { console.error(e); }
 
-                  const progressToSet = data.progress.quizzes || {};
-                  // --- 🔽 [偵錯 4] 確認最終要設定到 state 的值 ---
-                  console.log('[CodeMate 偵錯 4] 準備設定到 quizProgress state 的值:', progressToSet);
-                  // --- 🔼 --------------------
-                  
-                  setQuizProgress(progressToSet); 
-              } else {
-                  console.error("無法從 DB 載入測驗進度 (API 回應 not ok)");
-                  setQuizProgress({});
+          // 4. 🔥 [修改] 載入課程與 Tabs (優先從資料庫讀取)
+          setCourses(mockCourses);
+          const defaultTab = { id: 1, type: 'code', title: 'Code 1', content: '', output: '', error: '' };
+          
+          let loadedData = null;
+
+          // A. 嘗試從後端資料庫讀取
+          try {
+              const res = await fetch(`/api/workspace/load/${currentStudentId}`);
+              if (res.ok) {
+                  const dbData = await res.json();
+                  // 檢查資料庫裡是否有有效的 Tabs 資料
+                  if (dbData && dbData.tabs && Array.isArray(dbData.tabs) && dbData.tabs.length > 0) {
+                      loadedData = dbData;
+                      console.log("已從資料庫恢復工作區狀態");
+                  }
               }
           } catch (e) {
-              console.error("載入測驗進度 API 請求失敗:", e);
-              setQuizProgress({});
+              console.error("無法連接資料庫讀取進度，將嘗試 LocalStorage", e);
           }
 
-          // 3. 載入課程/分頁進度 (保持不變)
-          setCourses(mockCourses);
-          const savedProgressRaw = localStorage.getItem(`progress_${currentStudentId}`); 
-
-          if (savedProgressRaw) {
-            try {
-              const savedProgress = JSON.parse(savedProgressRaw);
-              const lastCourse = mockCourses.find(c => c.id === savedProgress.lastCourseId) || mockCourses[0];
-              if (!lastCourse) {
-                  return;
+          // B. 如果資料庫沒資料，嘗試 LocalStorage (備用)
+          if (!loadedData) {
+              const localRaw = localStorage.getItem(`progress_${currentStudentId}`);
+              if (localRaw) {
+                  try {
+                      loadedData = JSON.parse(localRaw);
+                      console.log("已從 LocalStorage 恢復工作區狀態");
+                  } catch (e) { console.error("LocalStorage 解析失敗"); }
               }
+          }
+
+          // C. 執行還原邏輯
+          if (loadedData) {
+            try {
+              // 還原課程位置
+              const lastCourse = mockCourses.find(c => c.id === loadedData.lastCourseId) || mockCourses[0];
               const courseModules = mockModules[lastCourse.id] || [];
-              const lastModuleId = savedProgress.lastModuleId;
+              const lastModuleId = loadedData.lastModuleId;
               let lastModule = null;
               let parentModule = null;
 
@@ -1169,7 +1171,6 @@
                       if (foundSub) { lastModule = foundSub; parentModule = module; break; }
                   }
               }
-
               if (!lastModule && courseModules.length > 0) {
                   const firstModule = courseModules[0];
                   lastModule = firstModule.submodules && firstModule.submodules.length > 0 ? firstModule.submodules[0] : firstModule;
@@ -1179,36 +1180,81 @@
               setSelectedCourse(lastCourse);
               setModules(courseModules);
               setCurrentModule(lastModule);
-              if (parentModule) {
-                  setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
-              }
-              
-              if (savedProgress.tabs && Array.isArray(savedProgress.tabs) && savedProgress.tabs.length > 0) {
-                  setTabs(savedProgress.tabs);
-                  setActiveTabId(savedProgress.activeTabId || savedProgress.tabs[0].id);
-                  setNextTabId((Math.max(...savedProgress.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
-              } else if (lastModule) {
-                  handleModuleSelect(lastModule, true);
-              }
+              if (parentModule) setExpandedModules(prev => ({ ...prev, [parentModule.id]: true }));
 
-              if (savedProgress.worksheetAnswers) { // [新增] 載入學習單答案
-                  setWorksheetAnswers(savedProgress.worksheetAnswers);
+              // 還原 Tabs
+              if (loadedData.tabs && Array.isArray(loadedData.tabs) && loadedData.tabs.length > 0) {
+                  setTabs(loadedData.tabs);
+                  setActiveTabId(loadedData.activeTabId || loadedData.tabs[0].id);
+                  setNextTabId((Math.max(...loadedData.tabs.map(t => parseInt(t.id, 10))) || 0) + 1);
+              } else {
+                  setTabs([defaultTab]);
+                  setActiveTabId(defaultTab.id);
+                  setNextTabId(2);
               }
-
             } catch (error) {
-              console.error("讀取進度失敗，將重設為預設值:", error);
-              localStorage.removeItem(`progress_${currentStudentId}`);
+              console.error("還原資料時發生錯誤:", error);
               if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+              setTabs([defaultTab]);
+              setActiveTabId(defaultTab.id);
             }
           } else {
+            // 完全沒有紀錄 (新帳號)
             if (mockCourses.length > 0) handleCourseSelect(mockCourses[0]);
+            setTabs([defaultTab]);
+            setActiveTabId(defaultTab.id);
+            setNextTabId(2);
           }
+
+          setIsDataLoaded(true); // 🚩 載入完成，允許開始自動存檔
         };
 
         if (page === 'learning' && isLoggedIn && studentId) {
           loadData();
         }
       }, [page, isLoggedIn, studentId]);
+      // --- 🔽 [新增] 自動儲存 Tabs 到 資料庫 + LocalStorage ---
+      useEffect(() => {
+        // 防止未載入完成就覆蓋資料
+        if (!isDataLoaded) return;
+        if (!isLoggedIn || !studentId) return;
+
+        // 1. 先清除舊的計時器 (Debounce 機制)
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        // 2. 設定新的計時器 (例如 2 秒後再傳送給伺服器)
+        // 這樣你在打字時不會每打一個字就 Call API，而是停下來 2 秒後才存
+        saveTimeoutRef.current = setTimeout(() => {
+            const progressData = {
+                studentId,
+                tabs,
+                activeTabId,
+                lastCourseId: selectedCourse?.id,
+                lastModuleId: currentModule?.id
+            };
+            
+            // A. 存到後端資料庫
+            fetch('/api/workspace/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(progressData)
+            }).then(res => {
+                if(res.ok) console.log("已自動儲存到資料庫");
+            }).catch(err => console.error("自動儲存失敗:", err));
+
+            // B. 同步存到 LocalStorage (作為離線備份或快速快取)
+            localStorage.setItem(`progress_${studentId}`, JSON.stringify(progressData));
+
+        }, 2000); // 延遲 2000 毫秒 (2秒)
+
+        // 組件卸載時清理計時器
+        return () => {
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        };
+      }, [tabs, activeTabId, currentModule, selectedCourse, isLoggedIn, studentId, isDataLoaded]);
+      // --- 🔼 -----------------------------------------
 
       const saveWorksheetAnswersToDb = useCallback(async (answers) => {
         if (!studentId || !answers || Object.keys(answers).length === 0) return;
@@ -1428,7 +1474,6 @@
 		  // 🔥 Step 2: 清除 localStorage
 		  localStorage.removeItem('studentId');
 		  localStorage.removeItem('studentName');
-		  localStorage.removeItem(`progress_${studentId}`);
 		
 		  // 🔥 Step 3: 清除前端的登入資料
 		  setIsLoggedIn(false);
@@ -1447,7 +1492,7 @@
 			  timestamp: new Date().toISOString(),
 			}
 		  ]);
-		
+      setIsDataLoaded(false);
 		  showMessageModal('您已成功登出。');
 		};
 
