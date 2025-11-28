@@ -422,8 +422,11 @@ app.get('/api/progress/quiz/:studentId', async (req, res) => {
 
   const record = await QuizProgress.findOne({ studentId });
 
-  res.status(200).json(record ? record.quizzes : {});
+  res.status(200).json({
+    quizzes: record ? record.quizzes : {}
+  });
 });
+
 
 // [GET API] 取得「所有」測驗進度 (保持不變)
 // app.get('/api/progress/quiz/:studentId', async (req, res) => {
