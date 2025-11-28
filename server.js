@@ -75,6 +75,17 @@ const worksheetAnswerSchema = new mongoose.Schema({
 });
 const WorksheetAnswer = mongoose.model('WorksheetAnswer', worksheetAnswerSchema, 'WorksheetAnswers');
 
+// --- 🔽 [新增] User Workspace Schema (儲存 Tabs 狀態) ---
+const userWorkspaceSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, unique: true },
+  tabs: { type: Array, default: [] }, // 這裡會儲存所有的 Code 和 Note 分頁
+  activeTabId: { type: Number },      // 紀錄最後選中的分頁
+  lastCourseId: { type: Number },     // 紀錄最後所在的課程
+  lastModuleId: { type: Number },     // 紀錄最後所在的單元
+  lastUpdated: { type: Date, default: Date.now }
+});
+const UserWorkspace = mongoose.model('UserWorkspace', userWorkspaceSchema, 'UserWorkspaces');
+// --- 🔼 ----------------------------------------------
 // 後端輔助函數 (保持不變)
 const reconstructProgress = (allAttempts) => {
   const quizzes = {}; 
@@ -152,7 +163,53 @@ app.get('/api/progress/worksheet/load/:studentId', async (req, res) => {
     res.status(500).json({ message: '伺服器內部錯誤' });
   }
 });
+// --- 🔽 [新增] Workspace API (儲存/讀取 Tabs) ---
 
+// A. 儲存工作區狀態 (包含所有 Tabs)
+app.post('/api/workspace/save', async (req, res) => {
+  try {
+    const { studentId, tabs, activeTabId, lastCourseId, lastModuleId } = req.body;
+    
+    if (!studentId) {
+      return res.status(400).json({ message: "Missing studentId" });
+    }
+
+    // 使用 findOneAndUpdate + upsert：如果資料不存在就新增，存在就更新
+    await UserWorkspace.findOneAndUpdate(
+      { studentId },
+      { 
+        $set: { 
+          tabs, 
+          activeTabId, 
+          lastCourseId, 
+          lastModuleId, 
+          lastUpdated: new Date() 
+        } 
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({ message: "Workspace saved successfully" });
+
+  } catch (err) {
+    console.error("儲存 Workspace 失敗:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// B. 讀取工作區狀態
+app.get('/api/workspace/load/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const data = await UserWorkspace.findOne({ studentId });
+    // 如果找不到資料 (null)，回傳空物件，前端會處理預設值
+    res.json(data || {}); 
+  } catch (err) {
+    console.error("讀取 Workspace 失敗:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+// --- 🔼 ----------------------------------------------
 // 註冊 API: /api/register (保持不變)
 app.post('/api/register', async (req, res) => {
   try {
