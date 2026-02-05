@@ -1,5 +1,6 @@
 // 1. 引入需要的模組
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -432,35 +433,82 @@ const io = new Server(server, {
   }
 });
 
-io.on('connection', (socket) => {
-  console.log(`[Socket.IO] 一位使用者已連線: ${socket.id}`);
-  
-  let pythonProcess = null; 
+socket.on('run_code', (code) => {
+    console.log(`[Socket.IO] 收到 'run_code' 事件`);
+    
+    // --- 🛡️ 安全防護措施 Start ---
 
-  socket.on('run_code', (code) => {
-    console.log(`[Socket.IO] 收到 'run_code' 事件`);
-    if (pythonProcess) {
-      pythonProcess.kill('SIGKILL');
-    }
-    pythonProcess = spawn('python3', ['-u', '-c', code]);
+    // 1. 確保有一個獨立的執行資料夾 (Sandbox Directory)
+    // 這樣學生的檔案操作只會發生在這個資料夾內，不會影響外部專案
+    const workspaceDir = path.join(__dirname, 'temp_workspace');
+    if (!fs.existsSync(workspaceDir)){
+        fs.mkdirSync(workspaceDir);
+    }
 
-    pythonProcess.stdout.on('data', (data) => {
-      socket.emit('terminal_output', data.toString());
-    });
-    pythonProcess.stderr.on('data', (data) => {
-      socket.emit('terminal_output', data.toString());
-    });
-    pythonProcess.on('close', (code) => {
-      // 通知前端：程式已結束（不顯示退出代碼）
+    // 2. 注入 Python 安全前置碼 (Security Preamble)
+    // 這段 Python 程式碼會跑在學生程式碼之前，用來禁用危險功能
+    const securityPreamble = `
+import sys
+import os
+import builtins
+
+# --- 禁用危險模組 ---
+# 將 shutil 設為 None，這樣 'import shutil' 就會失敗
+sys.modules['shutil'] = None 
+
+# --- 限制 os 功能 ---
+# 禁用刪除檔案與目錄的功能
+if hasattr(os, 'remove'): os.remove = lambda *args, **kwargs: print("⚠️ 安全警告: 刪除檔案功能(os.remove)已被禁用。")
+if hasattr(os, 'rmdir'): os.rmdir = lambda *args, **kwargs: print("⚠️ 安全警告: 刪除目錄功能(os.rmdir)已被禁用。")
+if hasattr(os, 'unlink'): os.unlink = lambda *args, **kwargs: print("⚠️ 安全警告: 刪除連結功能(os.unlink)已被禁用。")
+
+# --- 限制 open 功能 (防止目錄遍歷攻擊) ---
+# 這是為了讓 Ch14 仍能運作，但防止學生讀取/寫入 '../' (上一層) 或絕對路徑
+original_open = builtins.open
+
+def safe_open(file, mode='r', *args, **kwargs):
+    # 如果檔名包含 '..' 或以 '/' 開頭 (Linux絕對路徑) 或雖是 Windows 但包含冒號 (如 C:)，則禁止
+    str_file = str(file)
+    if '..' in str_file or str_file.startswith('/') or ':' in str_file:
+        raise PermissionError(f"⚠️ 安全警告: 存取受限。您只能在當前目錄下讀寫檔案，禁止使用 '../' 或絕對路徑。")
+    return original_open(file, mode, *args, **kwargs)
+
+# 覆蓋內建的 open 函式
+builtins.open = safe_open
+# ---------------------------
+
+`;
+
+    // 將安全碼與學生的程式碼合併
+    const finalCode = securityPreamble + "\n" + code;
+
+    // --- 🛡️ 安全防護措施 End ---
+
+
+    if (pythonProcess) {
+      pythonProcess.kill('SIGKILL');
+    }
+
+    // 3. 修改 spawn 選項：設定 cwd (Current Working Directory)
+    // 讓 Python 認為自己是在 'temp_workspace' 資料夾裡運作
+    pythonProcess = spawn('python3', ['-u', '-c', finalCode], { cwd: workspaceDir });
+
+    pythonProcess.stdout.on('data', (data) => {
+      socket.emit('terminal_output', data.toString());
+    });
+    pythonProcess.stderr.on('data', (data) => {
+      socket.emit('terminal_output', data.toString());
+    });
+    pythonProcess.on('close', (code) => {
       socket.emit('terminal_exit', null);
       pythonProcess = null;
     });
-    pythonProcess.on('error', (err) => {
-      console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
-      socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
-      pythonProcess = null;
-    });
-  });
+    pythonProcess.on('error', (err) => {
+      console.error(`[Python Spawn Error] 啟動 Python 失敗:`, err);
+      socket.emit('terminal_error', `啟動 Python 失敗: ${err.message}`);
+      pythonProcess = null;
+    });
+  });
 
   socket.on('terminal_input', (data) => {
     if (pythonProcess && pythonProcess.stdin) {
