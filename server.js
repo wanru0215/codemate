@@ -112,6 +112,19 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
     const titleInfo = chapterTitle ? `${chapterTitle} (ID: ${moduleId})` : `章節 ID ${moduleId}`;
+    let correctAnswerInfo = "";
+    if (String(moduleId) === "1015") {
+        correctAnswerInfo = `
+        【老師提供的標準解答 (僅供 AI 評判參考，請勿直接洩漏給學生)】：
+        1. 運算思維過程：抽象 (或 抽象化 / Abstraction)
+        2. 語言特性：直譯 (或 直譯式 / Interpreted)
+        3. 型態系統：動態 (或 動態型別 / Dynamic)
+        4. 程式註解：# (或 井號)
+        5. 解決問題：演算法 (Algorithm)
+        
+        請以這些答案為基準進行批改。若學生的回答與上述關鍵字同義或意思相近，請視為正確。
+        `;
+    }
     const systemPrompt = `
       你是一位 Python 程式設計老師。學生剛剛完成了${titleInfo}的運算思維學習單。
       以下是題目與學生目前的作答內容。
