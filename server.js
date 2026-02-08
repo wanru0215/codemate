@@ -205,22 +205,35 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
         - 新增：加入新的 Key-Value 對。
         `;
     }
-    else if (modIdStr === "2015") { // Ch10 去重 (Set)
+    else if (modIdStr === "2015") { 
         correctAnswerInfo = `
-        【題目背景】：去重小工具 (Set)。
-        【核心概念】：利用 Set 不允許重複元素的特性。
-        【步驟】：
-        1. 將含有重複資料的 List 轉為 Set (自動去重)。
-        2. 使用 len() 計算總數。
+        【題目背景】：校園活動簽到核對系統 (固定測資版)。
+        【指定測資】：
+        - 報名名單 (signup)：['Amy', 'Bob', 'Cathy', 'Dave', 'Amy']
+        - 簽到名單 (checkin)：['Bob', 'Amy', 'Eve', 'Bob']
+        
+        【標準解法與答案】：
+        1. 去重後：
+           - 報名集合：{'Amy', 'Bob', 'Cathy', 'Dave'}
+           - 簽到集合：{'Amy', 'Bob', 'Eve'}
+        2. 有效出席 (交集 &)：{'Amy', 'Bob'}
+        3. 缺席名單 (差集 -)：{'Cathy', 'Dave'} (注意：Eve 是沒報名但跑來的，題目只問缺席者，所以不需列出 Eve)
+        
+        【檢查重點】：
+        - 學生程式碼是否使用了題目指定的這兩組 List？
+        - 輸出的結果是否與上述標準答案一致？
         `;
     }
-    else if (modIdStr === "20211") { // Ch11 計算機 (Function)
+    else if (modIdStr === "20211") { 
         correctAnswerInfo = `
-        【題目背景】：計算機小函數。
+        【題目背景】：手搖飲自動計價函數 (Function 設計)。
         【需求】：
-        - 定義函數 (def)。
-        - 參數：接受兩個數字與運算符號，或四個獨立函數。
-        - 回傳：使用 return 回傳結果。
+        1. 定義函數：def calculate_price(drink, topping):
+        2. 邏輯判斷：
+           - 飲料：紅茶/綠茶=30, 奶茶=50。
+           - 加料：珍珠=+10, 椰果=+5, 無=+0。
+        3. 回傳：必須使用 return 回傳計算後的總金額 (int)。
+        【檢查重點】：是否使用了 def, return, 以及正確的 if-elif-else 條件判斷。
         `;
     }
     else if (modIdStr === "20310") { // Ch12 小動物 (Class)
