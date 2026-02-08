@@ -111,6 +111,7 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
     const modelName = "gemini-2.0-flash";
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
+    const titleInfo = chapterTitle ? `${chapterTitle} (ID: ${moduleId})` : `章節 ID ${moduleId}`;
     const systemPrompt = `
       你是一位 Python 程式設計老師。學生剛剛完成了章節 ID ${moduleId} 的運算思維學習單。
       以下是題目與學生目前的作答內容。
