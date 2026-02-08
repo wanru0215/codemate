@@ -67,7 +67,15 @@ const QuizProgress = mongoose.model('QuizProgress', quizProgressSchema, 'QuizPro
 // 學習單答案 Schema
 const worksheetAnswerSchema = new mongoose.Schema({
   studentId: { type: String, required: true, unique: true, index: true },
-  answers: { type: mongoose.Schema.Types.Mixed, required: true }, 
+  answers: { type: mongoose.Schema.Types.Mixed, required: true }, // 這是「最新」的編輯狀態 (Auto-save)
+  history: [ // 這是「歷史紀錄」，每次按 AI 批改時存一筆
+    {
+      moduleId: Number,       // 哪一章節
+      timestamp: { type: Date, default: Date.now },
+      answersSnapshot: Object, // 按下批改當下的答案
+      aiFeedback: String       // AI 給的建議
+    }
+  ],
   lastUpdated: { type: Date, default: Date.now }
 });
 const WorksheetAnswer = mongoose.model('WorksheetAnswer', worksheetAnswerSchema, 'WorksheetAnswers');
@@ -84,6 +92,73 @@ const userWorkspaceSchema = new mongoose.Schema({
 const UserWorkspace = mongoose.model('UserWorkspace', userWorkspaceSchema, 'UserWorkspaces');
 
 // --- API 路由 (Routes) ---
+//AI批改
+app.post('/api/progress/worksheet/grade', async (req, res) => {
+  try {
+    const { studentId, moduleId, currentAnswers, contextData } = req.body;
+
+    if (!studentId || !moduleId || !contextData) {
+      return res.status(400).json({ message: '缺少必要資料' });
+    }
+
+    // A. 準備 Prompt 呼叫 Gemini
+    const apiKey = process.env.GEMINI_API_KEY;
+    const modelName = "gemini-2.0-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+    const systemPrompt = `
+      你是一位 Python 程式設計老師。學生剛剛完成了章節 ID ${moduleId} 的運算思維學習單。
+      以下是題目與學生目前的作答內容。
+      
+      請針對學生的作答給予「批改建議」：
+      1. 指出哪些回答是正確的，給予肯定。
+      2. 指出哪些回答有誤或不精確，並引導學生思考正確方向（不要直接給答案）。
+      3. 語氣要鼓勵且友善。
+      4. 請用繁體中文回答。
+      
+      學生的作答資料如下：
+      ${contextData}
+    `;
+
+    const payload = {
+      contents: [{ role: 'user', parts: [{ text: systemPrompt }] }]
+    };
+
+    // 呼叫 Gemini
+    const geminiResponse = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    const data = await geminiResponse.json();
+    const aiFeedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 目前無法提供建議。";
+
+    // B. 存檔：將「當下版本」與「AI 建議」存入 history
+    await WorksheetAnswer.findOneAndUpdate(
+      { studentId: studentId },
+      { 
+        $push: { 
+          history: {
+            moduleId: moduleId,
+            timestamp: new Date(),
+            answersSnapshot: currentAnswers, // 儲存按下按鈕當下的答案版本
+            aiFeedback: aiFeedback
+          }
+        },
+        $set: { lastUpdated: new Date() } // 同時更新最後時間
+      },
+      { upsert: true, new: true }
+    );
+
+    // C. 回傳 AI 建議給前端顯示
+    res.status(200).json({ feedback: aiFeedback });
+
+  } catch (error) {
+    console.error('AI 批改 API 錯誤:', error);
+    res.status(500).json({ message: '伺服器錯誤，無法取得 AI 建議' });
+  }
+});
 
 // 儲存學習單答案 API
 app.post('/api/progress/worksheet/save', async (req, res) => {
