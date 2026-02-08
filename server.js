@@ -113,7 +113,7 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
 
     const titleInfo = chapterTitle ? `${chapterTitle} (ID: ${moduleId})` : `章節 ID ${moduleId}`;
     const systemPrompt = `
-      你是一位 Python 程式設計老師。學生剛剛完成了章節 ID ${moduleId} 的運算思維學習單。
+      你是一位 Python 程式設計老師。學生剛剛完成了${titleInfo}的運算思維學習單。
       以下是題目與學生目前的作答內容。
       
       請針對學生的作答給予「批改建議」：
