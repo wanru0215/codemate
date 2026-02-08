@@ -116,11 +116,11 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
     if (String(moduleId) === "1015") {
         correctAnswerInfo = `
         【老師提供的標準解答 (僅供 AI 評判參考，請勿直接洩漏給學生)】：
-        1. 運算思維過程：抽象 (或 抽象化 / Abstraction)
-        2. 語言特性：直譯 (或 直譯式 / Interpreted)
-        3. 型態系統：動態 (或 動態型別 / Dynamic)
-        4. 程式註解：# (或 井號)
-        5. 解決問題：演算法 (Algorithm)
+        1. 抽象
+        2. 直譯
+        3. 動態
+        4. #
+        5. 演算法
         
         請以這些答案為基準進行批改。若學生的回答與上述關鍵字同義或意思相近，請視為正確。
         `;
