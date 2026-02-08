@@ -448,8 +448,7 @@
       const [tempTabTitle, setTempTabTitle] = useState("");   // 暫存編輯中的標題
       const [tabTooltip, setTabTooltip] = useState({ show: false, x: 0, y: 0 });
 	  const [isGrading, setIsGrading] = useState(false); // 載入中狀態
-      const [aiFeedbackModal, setAiFeedbackModal] = useState({ show: false, content: '' }); // 顯示 AI 建議的視窗
-
+      
       // 🔽 [新增] 處理分頁更名相關函數
       const handleTabDoubleClick = (e, tab) => {
           e.stopPropagation(); // 防止觸發其他點擊事件
@@ -1931,51 +1930,43 @@
               return;
           }
 
-          setIsGrading(true); // 開始轉圈圈
+          setIsGrading(true); 
 
-          // 1. 組合 Context Data (題目 + 學生答案)
-          // 這樣後端才知道學生寫了什麼對應什麼題目
+          // ... (中間省略：準備 contextData 的邏輯保持不變) ...
+          // ... (請保留原本 contextData 組合的那一大段程式碼) ...
           let contextData = "";
           const ans = worksheetAnswers[currentModule.id] || {};
-
-          if (currentModule.id === 1015) {
-              contextData += `[題目1] 運算思維過程 (忽略細節)... \n[學生回答]: ${ans['q1'] || '未作答'}\n\n`;
-              contextData += `[題目2] Python 語言特性 (Interpreted)... \n[學生回答]: ${ans['q2'] || '未作答'}\n\n`;
-              contextData += `[題目3] Python 型態系統... \n[學生回答]: ${ans['q3'] || '未作答'}\n\n`;
-              contextData += `[題目4] 單行註解符號... \n[學生回答]: ${ans['q4'] || '未作答'}\n\n`;
-              contextData += `[題目5] 運算思維最後步驟... \n[學生回答]: ${ans['q5'] || '未作答'}\n\n`;
-          } else {
-              // 其他章節的通用格式
-              contextData += `[1. 拆解問題]\n`;
-              contextData += `目標: ${ans['q1-1'] || '未作答'}\n`;
-              contextData += `主要功能: ${ans['q1-2'] || '未作答'}\n`;
-              contextData += `細分步驟: ${ans['q1-3'] || '未作答'}\n\n`;
-              contextData += `[2. 樣式辨識]\n`;
-              contextData += `重複任務: ${ans['q2-1'] || '未作答'}\n`;
-              contextData += `相似問題: ${ans['q2-2'] || '未作答'}\n`;
-              contextData += `迴圈應用: ${ans['q2-3'] || '未作答'}\n\n`;
-              // ... (您可以依此類推加入剩下的 q3, q4)
-              contextData += `[3. 抽象化] 輸入: ${ans['q3-1']}, 輸出: ${ans['q3-2']}, 變數: ${ans['q3-3']}\n`;
-              contextData += `[4. 演算法] 步驟: ${ans['q4-1']}, 例外: ${ans['q4-2']}\n`;
-          }
+          // ... Context Data 組合邏輯 ...
 
           try {
-              // 2. 呼叫後端 API
               const res = await fetch('/api/progress/worksheet/grade', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                       studentId: currentStudentId,
                       moduleId: currentModule.id,
-                      currentAnswers: ans, // 傳送當下的答案物件
+                      currentAnswers: ans,
                       contextData: contextData
                   })
               });
 
               if (res.ok) {
                   const data = await res.json();
-                  // 3. 顯示結果
-                  setAiFeedbackModal({ show: true, content: data.feedback });
+                  
+                  // 🔥 [修改] 不再跳出 Modal，而是新增一個右側分頁 🔥
+                  const newTabId = nextTabId;
+                  const newTab = {
+                      id: newTabId,
+                      type: 'feedback', // 新增一種 type
+                      title: `AI 建議 (${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`,
+                      content: data.feedback, 
+                  };
+
+                  setTabs(prev => [...prev, newTab]);
+                  setNextTabId(prev => prev + 1);
+                  setActiveTabId(newTabId); // 自動切換到該分頁
+
+                  showMessageModal('AI 建議已生成於右側分頁！');
               } else {
                   showMessageModal('AI 批改失敗，請稍後再試。');
               }
@@ -2375,7 +2366,7 @@
                                       </>
                                   ) : (
                                       <>
-                                        <Icon name="code" className="w-3 h-3" /> AI批改建議
+                                        AI批改建議
                                       </>
                                   )}
 	                            </button>
@@ -2911,6 +2902,23 @@
                             </div>
                           </div>
                       )}
+					  {activeTab?.type === 'feedback' && (
+                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
+                            <div className="flex-1 p-4 overflow-y-auto prose prose-invert max-w-none text-sm">
+                                {/* 使用 dangerouslySetInnerHTML 來渲染 Markdown 轉成的 HTML */}
+                                <div dangerouslySetInnerHTML={{ __html: marked.parse(activeTab.content) }}></div>
+                            </div>
+                            <div className="p-2 border-t border-slate-700 flex justify-start gap-2">
+                                <button 
+                                    onClick={() => handleRemoveTab(activeTab.id)}
+                                    className="text-xs bg-slate-700 text-slate-300 px-3 py-1 rounded-full hover:bg-slate-600"
+                                >
+                                    關閉建議
+                                </button>
+                                <span className="text-xs text-slate-500 self-center">您可以對照左側學習單進行修改</span>
+                            </div>
+                          </div>
+                      )}
                       {!activeTab && <div className="text-sm text-slate-500 p-4">請新增一個分頁開始。</div>}
                   </div>
             </div>
@@ -3030,29 +3038,6 @@
           {showMessage && (
             <div className="fixed top-5 right-5 bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
               {message}
-            </div>
-          )}
-		  {/* 🔥 新增：AI 建議 Modal 🔥 */}
-          {aiFeedbackModal.show && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-                <div className="bg-slate-800 border border-slate-700 text-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-                    <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                        <h3 className="text-xl font-bold text-purple-400">🤖 AI 批改與建議</h3>
-                        <button onClick={() => setAiFeedbackModal({ show: false, content: '' })} className="text-slate-400 hover:text-white">✕</button>
-                    </div>
-                    <div className="p-6 overflow-y-auto prose prose-invert max-w-none">
-                        {/* 使用 Markdown 渲染回傳的建議 */}
-                        <div dangerouslySetInnerHTML={{ __html: marked.parse(aiFeedbackModal.content) }}></div>
-                    </div>
-                    <div className="p-4 border-t border-slate-700 flex justify-end">
-                        <button 
-                            onClick={() => setAiFeedbackModal({ show: false, content: '' })}
-                            className="bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700"
-                        >
-                            我了解了，回去修改
-                        </button>
-                    </div>
-                </div>
             </div>
           )}
           {renderQuizModal()}
