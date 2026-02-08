@@ -461,7 +461,7 @@
       // ... 原有的 state ...
       const [editingTabId, setEditingTabId] = useState(null); // 追蹤正在編輯哪個 Tab ID
       const [tempTabTitle, setTempTabTitle] = useState("");   // 暫存編輯中的標題
-      const [globalTooltip, setGlobalTooltip] = useState({ show: false, x: 0, y: 0, text: '' });
+      const [globalTooltip, setGlobalTooltip] = useState({ show: false, x: 0, y: 0, text: '', placement: 'bottom' });
 	  const [isGrading, setIsGrading] = useState(false); // 載入中狀態
 	  const handleShowTooltip = (e, text, placement = 'bottom') => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -474,9 +474,22 @@
           } else if (placement === 'right') {
               x = rect.right + 8;
               y = rect.top + rect.height / 2;
+          } else if (placement === 'top') {
+              x = rect.left + rect.width / 2;
+              y = rect.top - 8; // 顯示在元件上方 8px
           }
 
-          setGlobalTooltip({ show: true, x, y, text });
+          setGlobalTooltip({ show: true, x, y, text, placement });
+      };
+
+      const handleFollowMouseTooltip = (e, text) => {
+          setGlobalTooltip({
+              show: true,
+              x: e.clientX,       // 跟隨滑鼠 X
+              y: e.clientY - 15,  // 顯示在滑鼠上方 15px
+              text,
+              placement: 'top'    // 強制設定為上方模式
+          });
       };
 
       const handleHideTooltip = () => {
@@ -1156,11 +1169,10 @@
 			setTimeout(() => {
                 const gutters = document.querySelectorAll('.gutter');
                 gutters.forEach(gutter => {
-                    // 移除原生的 title，避免重複顯示
                     gutter.removeAttribute('title'); 
                     
-                    // 手動綁定 React 的事件邏輯
-                    gutter.onmouseenter = (e) => handleShowTooltip(e, '拖曳調整大小', 'bottom');
+                    // 使用 onmousemove 讓它跟著滑鼠跑
+                    gutter.onmousemove = (e) => handleFollowMouseTooltip(e, '拖曳調整大小');
                     gutter.onmouseleave = handleHideTooltip;
                 });
             }, 100);
@@ -2995,11 +3007,14 @@
             {/* 🔽 [新增] 全域懸浮 Tooltip (Fixed 定位，不會被 overflow 切掉) */}
             {globalTooltip.show && (
                 <div 
-                    className="fixed z-[100] px-2 py-1 bg-slate-800 text-teal-400 text-xs rounded border border-slate-600 shadow-xl pointer-events-none whitespace-nowrap font-sans"
+                    className="fixed z-[100] px-2 py-1 bg-slate-800 text-slate-300 text-xs rounded border border-slate-600 shadow-xl pointer-events-none whitespace-nowrap font-sans"
                     style={{ 
                         top: globalTooltip.y, 
                         left: globalTooltip.x,
-                        transform: globalTooltip.y > window.innerHeight - 50 ? 'translate(-50%, -100%)' : 'translate(-50%, 0)' // 簡單的邊界防護
+                        // 🔥 關鍵修改：如果是 'top'，要往上平移 100% (translateY -100%)
+                        transform: globalTooltip.placement === 'top' 
+                            ? 'translate(-50%, -100%)' 
+                            : 'translate(-50%, 0)'
                     }}
                 >
                     {globalTooltip.text}
@@ -3019,7 +3034,7 @@
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-xl font-bold text-slate-100">課程列表</h2>
                             <button onClick={() => setIsSidebarOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-800"
-								onMouseEnter={(e) => handleShowTooltip(e, '收起課程列表', 'right')} // 🔥 新增這行
+								onMouseEnter={(e) => handleShowTooltip(e, '收起課程列表', 'top')} // 🔥 新增這行
                                 onMouseLeave={handleHideTooltip} // 🔥 新增這行
 								>
                                 <Icon name="menu" className="w-6 h-6"/>
@@ -3072,7 +3087,7 @@
                 {!isSidebarOpen && (
                     <div className="flex flex-col items-center">
                         <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg hover:bg-slate-800"
-							onMouseEnter={(e) => handleShowTooltip(e, '展開課程列表', 'right')} // 🔥 新增這行 (顯示在右邊)
+							onMouseEnter={(e) => handleShowTooltip(e, '展開課程列表', 'top')} // 🔥 新增這行 (顯示在右邊)
                             onMouseLeave={handleHideTooltip} // 🔥 新增這行
 							>
                            <Icon name="menu" className="w-6 h-6"/>
