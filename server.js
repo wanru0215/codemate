@@ -9,7 +9,7 @@ const path = require("path");
 const fetch = require("node-fetch");
 const http = require('http');
 const { Server } = require("socket.io");
-const fs = require('fs'); // <--- [重要] 這是這次修復的關鍵
+const fs = require('fs'); 
 
 // 2. 初始化 Express 應用
 const app = express();
@@ -61,19 +61,18 @@ const quizProgressSchema = new mongoose.Schema({
   },
   lastUpdated: { type: Date, default: Date.now }
 });
-
 const QuizProgress = mongoose.model('QuizProgress', quizProgressSchema, 'QuizProgress');
 
-// 學習單答案 Schema
+// 🔥 [修改] 學習單 Schema：加入 history 欄位儲存批改紀錄 🔥
 const worksheetAnswerSchema = new mongoose.Schema({
   studentId: { type: String, required: true, unique: true, index: true },
-  answers: { type: mongoose.Schema.Types.Mixed, required: true }, // 這是「最新」的編輯狀態 (Auto-save)
-  history: [ // 這是「歷史紀錄」，每次按 AI 批改時存一筆
+  answers: { type: mongoose.Schema.Types.Mixed, required: true }, // 最新版答案
+  history: [ // 歷史紀錄 (AI 批改存檔用)
     {
-      moduleId: Number,       // 哪一章節
+      moduleId: Number,
       timestamp: { type: Date, default: Date.now },
-      answersSnapshot: Object, // 按下批改當下的答案
-      aiFeedback: String       // AI 給的建議
+      answersSnapshot: Object,
+      aiFeedback: String
     }
   ],
   lastUpdated: { type: Date, default: Date.now }
@@ -92,7 +91,8 @@ const userWorkspaceSchema = new mongoose.Schema({
 const UserWorkspace = mongoose.model('UserWorkspace', userWorkspaceSchema, 'UserWorkspaces');
 
 // --- API 路由 (Routes) ---
-//AI批改
+
+// 🔥 [新增] AI 批改 API 🔥
 app.post('/api/progress/worksheet/grade', async (req, res) => {
   try {
     const { studentId, moduleId, currentAnswers, contextData } = req.body;
@@ -103,6 +103,11 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
 
     // A. 準備 Prompt 呼叫 Gemini
     const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        console.error("缺少 GEMINI_API_KEY");
+        return res.status(500).json({ message: '伺服器配置錯誤: 缺少 API Key' });
+    }
+
     const modelName = "gemini-2.0-flash";
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
@@ -115,6 +120,7 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
       2. 指出哪些回答有誤或不精確，並引導學生思考正確方向（不要直接給答案）。
       3. 語氣要鼓勵且友善。
       4. 請用繁體中文回答。
+      5. 請使用 Markdown 格式 (例如列點、粗體)。
       
       學生的作答資料如下：
       ${contextData}
@@ -131,6 +137,12 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
       body: JSON.stringify(payload),
     });
     
+    if (!geminiResponse.ok) {
+        const errData = await geminiResponse.text();
+        console.error("Gemini API Error:", errData);
+        throw new Error("Gemini API 呼叫失敗");
+    }
+
     const data = await geminiResponse.json();
     const aiFeedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 目前無法提供建議。";
 
