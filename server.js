@@ -95,7 +95,7 @@ const UserWorkspace = mongoose.model('UserWorkspace', userWorkspaceSchema, 'User
 // 🔥 [新增] AI 批改 API 🔥
 app.post('/api/progress/worksheet/grade', async (req, res) => {
   try {
-    const { studentId, moduleId, currentAnswers, contextData } = req.body;
+    const { studentId, moduleId, chapterTitle, currentAnswers, contextData } = req.body;
 
     if (!studentId || !moduleId || !contextData) {
       return res.status(400).json({ message: '缺少必要資料' });
