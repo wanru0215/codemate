@@ -383,6 +383,21 @@
     }
 
     const App = () => {
+	  const CHAPTER_MAP = {
+        1015: "第一章",
+        1026: "第二章",
+        1037: "第三章",
+        1047: "第四章",
+        1056: "第五章",
+        10612: "第六章",
+        10711: "第七章",
+        1098: "第九章",
+        2015: "第十章",
+        20211: "第十一章",
+        20310: "第十二章",
+        20413: "第十四章",
+        2056: "第十五章"
+      };
       const topicMap = {
         1015: "Python 基本概念填空：請完成以下五題填空",
         1026: "薪資管理員：你現在是一科技公司的財務主管。公司有一名工讀生，本月工作總時數為156小時，時薪為180元 。你的任務是寫出結帳邏輯，除了計算總薪資，還要計算老闆該如何發放「最少張數」的鈔票與硬幣（假設只有千元鈔、百元鈔與十元硬幣）。",
@@ -826,10 +841,8 @@
                       worksheetAnswers: {} // 儲存學生的答案
                     } 
                 ]
-              }
-          ],
-          2: [
-              { 
+			  },
+			  { 
                 id: 201, 
                 title: "第10章．集合 (Set)",
                 submodules: [
@@ -914,7 +927,9 @@
                       worksheetAnswers: {} // 儲存學生的答案
                     } 
                 ]
-              },
+              }
+          ],
+          2: [
               { 
                 id: 203,
                 title: "第12章．類別-物件導向程式設計", 
@@ -1119,6 +1134,12 @@
                 gutterSize: 8,
                 cursor: 'row-resize',
             });
+			setTimeout(() => {
+                const gutters = document.querySelectorAll('.gutter');
+                gutters.forEach(gutter => {
+                    gutter.setAttribute('title', '拖曳調整大小');
+                });
+            }, 100);
 
             return () => {
                 horizontalSplit.destroy();
@@ -1931,6 +1952,7 @@
           }
 
           setIsGrading(true); 
+		  const chapterName = CHAPTER_MAP[currentModule.id] || `第 ${currentModule.id} 章`;
 
           // 1. 組合 Context Data (題目 + 學生答案)
           // 這是被遺漏的關鍵邏輯，必須加回來後端才看得懂題目
@@ -1972,6 +1994,7 @@
                   body: JSON.stringify({
                       studentId: currentStudentId,
                       moduleId: currentModule.id,
+					  chapterTitle: chapterName,
                       currentAnswers: ans,
                       contextData: contextData
                   })
@@ -1985,7 +2008,7 @@
                   const newTab = {
                       id: newTabId,
                       type: 'feedback', // 新增一種 type
-                      title: `AI 建議 (${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`,
+                      title: `${chapterName}AI建議`,
                       content: data.feedback, 
                   };
 
@@ -2976,7 +2999,7 @@
                     <>
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-xl font-bold text-slate-100">課程列表</h2>
-                            <button onClick={() => setIsSidebarOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-800">
+                            <button onClick={() => setIsSidebarOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-800 title="收起課程列表"">
                                 <Icon name="menu" className="w-6 h-6"/>
                             </button>
                         </div>
