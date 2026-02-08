@@ -1932,11 +1932,38 @@
 
           setIsGrading(true); 
 
-          // ... (中間省略：準備 contextData 的邏輯保持不變) ...
-          // ... (請保留原本 contextData 組合的那一大段程式碼) ...
+          // 1. 組合 Context Data (題目 + 學生答案)
+          // 這是被遺漏的關鍵邏輯，必須加回來後端才看得懂題目
           let contextData = "";
           const ans = worksheetAnswers[currentModule.id] || {};
-          // ... Context Data 組合邏輯 ...
+
+          if (currentModule.id === 1015) {
+              contextData += `[題目1] 運算思維過程 (忽略細節)... \n[學生回答]: ${ans['q1'] || '未作答'}\n\n`;
+              contextData += `[題目2] Python 語言特性 (Interpreted)... \n[學生回答]: ${ans['q2'] || '未作答'}\n\n`;
+              contextData += `[題目3] Python 型態系統... \n[學生回答]: ${ans['q3'] || '未作答'}\n\n`;
+              contextData += `[題目4] 單行註解符號... \n[學生回答]: ${ans['q4'] || '未作答'}\n\n`;
+              contextData += `[題目5] 運算思維最後步驟... \n[學生回答]: ${ans['q5'] || '未作答'}\n\n`;
+          } else {
+              // 其他章節的通用格式
+              contextData += `[1. 拆解問題]\n`;
+              contextData += `目標: ${ans['q1-1'] || '未作答'}\n`;
+              contextData += `主要功能: ${ans['q1-2'] || '未作答'}\n`;
+              contextData += `細分步驟: ${ans['q1-3'] || '未作答'}\n\n`;
+              contextData += `[2. 樣式辨識]\n`;
+              contextData += `重複任務: ${ans['q2-1'] || '未作答'}\n`;
+              contextData += `相似問題: ${ans['q2-2'] || '未作答'}\n`;
+              contextData += `迴圈應用: ${ans['q2-3'] || '未作答'}\n\n`;
+              
+              contextData += `[3. 抽象化]\n`;
+              contextData += `輸入: ${ans['q3-1'] || '未作答'}\n`;
+              contextData += `輸出: ${ans['q3-2'] || '未作答'}\n`;
+              contextData += `變數: ${ans['q3-3'] || '未作答'}\n`;
+              contextData += `忽略細節: ${ans['q3-4'] || '未作答'}\n\n`;
+
+              contextData += `[4. 演算法]\n`;
+              contextData += `步驟: ${ans['q4-1'] || '未作答'}\n`;
+              contextData += `例外處理: ${ans['q4-2'] || '未作答'}\n`;
+          }
 
           try {
               const res = await fetch('/api/progress/worksheet/grade', {
@@ -1953,7 +1980,7 @@
               if (res.ok) {
                   const data = await res.json();
                   
-                  // 🔥 [修改] 不再跳出 Modal，而是新增一個右側分頁 🔥
+                  // 新增一個右側分頁顯示建議
                   const newTabId = nextTabId;
                   const newTab = {
                       id: newTabId,
@@ -1968,10 +1995,11 @@
 
                   showMessageModal('AI 建議已生成於右側分頁！');
               } else {
+                  console.error("AI 批改回應錯誤:", await res.text());
                   showMessageModal('AI 批改失敗，請稍後再試。');
               }
           } catch (e) {
-              console.error(e);
+              console.error("AI 批改連線錯誤:", e);
               showMessageModal('連線錯誤。');
           } finally {
               setIsGrading(false);
