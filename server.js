@@ -128,7 +128,8 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
     const systemPrompt = `
       你是一位 Python 程式設計老師。學生剛剛完成了${titleInfo}的運算思維學習單。
       以下是題目與學生目前的作答內容。
-      
+      ${correctAnswerInfo}
+      以下是題目與學生目前的作答內容。
       請針對學生的作答給予「批改建議」：
       1. 指出哪些回答是正確的，給予肯定。
       2. 指出哪些回答有誤或不精確，並引導學生思考正確方向（不要直接給答案）。
