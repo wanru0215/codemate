@@ -113,38 +113,142 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
 
     const titleInfo = chapterTitle ? `${chapterTitle} (ID: ${moduleId})` : `章節 ID ${moduleId}`;
     let correctAnswerInfo = "";
-    if (String(moduleId) === "1015") {
+    const modIdStr = String(moduleId); // 轉成字串方便比對
+
+    if (modIdStr === "1015") { // Ch1 基本觀念
         correctAnswerInfo = `
-        【老師提供的標準解答 (僅供 AI 評判參考，請勿直接洩漏給學生)】：
-        1. 抽象
-        2. 直譯
-        3. 動態
-        4. #
-        5. 演算法
-        
-        請以這些答案為基準進行批改。若學生的回答與上述關鍵字同義或意思相近，請視為正確。
+        【標準解答】：
+        1. 抽象 (或 抽象化 / Abstraction)
+        2. 直譯 (或 直譯式 / Interpreted)
+        3. 動態 (或 動態型別 / Dynamic)
+        4. # (或 井號)
+        5. 演算法 (Algorithm)
+        `;
+    } 
+    else if (modIdStr === "1026") { // Ch2 薪資管理員
+        correctAnswerInfo = `
+        【題目背景】：薪資管理員。計算時薪 180元 * 156小時 = 28080元。
+        【關鍵限制】：題目規定「只有千元、百元、十元」三種面額。
+        【禁止事項】：嚴禁建議學生使用 2000, 500, 50, 5, 1 等其他面額。
+        【標準解法】：
+        - 總薪資 28080
+        - 1000元: 28張
+        - 100元: 0張
+        - 10元: 8枚
+        請檢查學生是否正確使用 // (整除) 和 % (餘數) 運算。
         `;
     }
-    else if (String(moduleId) === "1026") {
+    else if (modIdStr === "1037") { // Ch3 珍珠奶茶
         correctAnswerInfo = `
-        【題目背景與限制】：
-        這是一個「薪資管理員」的題目。
-        - 總薪資計算公式：156 (小時) * 180 (元/時) = 28080 元。
-        - **關鍵限制**：題目明確規定「假設只有千元鈔、百元鈔與十元硬幣」。
-        - **請注意**：請不要建議學生使用 2000, 500, 200, 50, 5, 1 等其他面額，這會違反題目設定。
-        
-        【標準解題邏輯】：
-        1. 拆解問題：
-           - 輸入：時數、時薪
-           - 處理：計算總薪資，然後依序計算 1000元張數 -> 100元張數 -> 10元枚數。
-           - 輸出：列印出各面額數量。
-        2. 演算法 (數學邏輯)：
-           - 總薪資 = 28080
-           - 1000元張數 = 28080 // 1000 = 28 張 (餘 80)
-           - 100元張數 = 80 // 100 = 0 張 (餘 80)
-           - 10元枚數 = 80 // 10 = 8 枚
-        
-        請檢查學生是否正確理解「餘數運算 (%)」與「整除運算 (//)」的應用。
+        【題目背景】：珍珠奶茶點餐系統。一杯 50 元。
+        【規則】：總金額 > 200 元視為「大額訂單」。
+        【檢查重點】：
+        1. 輸入：是否使用了 input() 且有轉型為 int()。
+        2. 判斷：是否正確使用 if 判斷總金額是否大於 200。
+        3. 輸出：需顯示總金額及是否為大額訂單。
+        `;
+    }
+    else if (modIdStr === "1047") { // Ch4 超市標籤
+        correctAnswerInfo = `
+        【題目背景】：超市自動標籤列印系統。
+        【輸入需求】：商品名稱(str)、特價編號(int)、原始價格(float)。
+        【排版限制】：
+        - 欄位間用 "|" 分隔。
+        - 名稱：佔 15 字元，靠左對齊 (f-string: {name:<15})。
+        - 價格：佔 10 字元，靠右對齊，小數點後兩位 (f-string: {price:>10.2f})。
+        請特別檢查學生的 f-string 格式化語法是否精確符合上述排版要求。
+        `;
+    }
+    else if (modIdStr === "1056") { // Ch5 分數等級
+        correctAnswerInfo = `
+        【題目背景】：分數等級判斷。
+        【等級標準】：
+        - 90以上: A
+        - 80-89: B
+        - 70-79: C
+        - 60-69: D
+        - 60以下: F
+        【例外處理】：若分數 > 100 或 < 0，必須顯示「分數輸入錯誤」。
+        請檢查學生是否使用了 if-elif-else 結構，以及是否優先處理了無效分數的檢查。
+        `;
+    }
+    else if (modIdStr === "10612") { // Ch6 成績紀錄 (List)
+        correctAnswerInfo = `
+        【題目背景】：成績紀錄系統 (List 操作)。
+        【必要任務】：
+        1. 建立初始 5 人成績串列。
+        2. append(): 新增轉學生。
+        3. pop() 或 remove(): 刪除最後一名。
+        4. max(): 找出最高分。
+        5. sort(reverse=True): 由高到低排序。
+        請檢查學生是否使用了對應的 List 方法 (Method)。
+        `;
+    }
+    else if (modIdStr === "10711") { // Ch7 猜數字 (Loop)
+        correctAnswerInfo = `
+        【題目背景】：猜數字遊戲 (1-100)。
+        【規則】：
+        - 隨機產生數字 (import random)。
+        - 最多猜 5 次 (使用迴圈限制次數)。
+        - 每次需提示「太大」或「太小」。
+        - 5次沒中顯示「挑戰失敗」。
+        - 猜中提早結束 (break)。
+        `;
+    }
+    else if (modIdStr === "1098") { // Ch9 通訊錄 (Dict)
+        correctAnswerInfo = `
+        【題目背景】：手機通訊錄 (Dictionary)。
+        【功能需求】：
+        - 建立字典：包含 3 位朋友資料。
+        - 查詢：透過 Key (姓名) 取得 Value (電話)。
+        - 修改：更新現有 Key 的 Value。
+        - 新增：加入新的 Key-Value 對。
+        `;
+    }
+    else if (modIdStr === "2015") { // Ch10 去重 (Set)
+        correctAnswerInfo = `
+        【題目背景】：去重小工具 (Set)。
+        【核心概念】：利用 Set 不允許重複元素的特性。
+        【步驟】：
+        1. 將含有重複資料的 List 轉為 Set (自動去重)。
+        2. 使用 len() 計算總數。
+        `;
+    }
+    else if (modIdStr === "20211") { // Ch11 計算機 (Function)
+        correctAnswerInfo = `
+        【題目背景】：計算機小函數。
+        【需求】：
+        - 定義函數 (def)。
+        - 參數：接受兩個數字與運算符號，或四個獨立函數。
+        - 回傳：使用 return 回傳結果。
+        `;
+    }
+    else if (modIdStr === "20310") { // Ch12 小動物 (Class)
+        correctAnswerInfo = `
+        【題目背景】：小動物養成遊戲 (OOP)。
+        【需求】：
+        - 定義 Class Animal。
+        - 建構子 __init__ (設定屬性)。
+        - 定義方法 (如 eat, sleep)。
+        - 實例化 (Instance) 並呼叫方法。
+        `;
+    }
+    else if (modIdStr === "20413") { // Ch14 日誌 (File)
+        correctAnswerInfo = `
+        【題目背景】：日誌小管家 (檔案讀寫)。
+        【需求】：
+        - 使用 with open() as f 語法 (確保關閉)。
+        - 讀取模式 'r' 統計字數/行數。
+        - 寫入模式 'w' 或 'a' 寫入結果。
+        `;
+    }
+    else if (modIdStr === "2056") { // Ch15 防錯 (Try-Except)
+        correctAnswerInfo = `
+        【題目背景】：防錯小偵探。
+        【需求】：
+        - 使用 try-except 結構捕捉錯誤。
+        - 避免程式因為 ValueError 或 ZeroDivisionError 而崩潰。
+        - 顯示友善的錯誤訊息。
         `;
     }
     const systemPrompt = `
