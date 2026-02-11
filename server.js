@@ -236,32 +236,43 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
         【檢查重點】：是否使用了 def, return, 以及正確的 if-elif-else 條件判斷。
         `;
     }
-    else if (modIdStr === "20310") { // Ch12 小動物 (Class)
+    else if (modIdStr === "20310") { 
         correctAnswerInfo = `
-        【題目背景】：小動物養成遊戲 (OOP)。
-        【需求】：
-        - 定義 Class Animal。
-        - 建構子 __init__ (設定屬性)。
-        - 定義方法 (如 eat, sleep)。
-        - 實例化 (Instance) 並呼叫方法。
+        【題目背景】：電子寵物 (Class & Object)。
+        【標準解法】：
+        1. 定義類別 Class Pet。
+        2. 建構子 __init__：設定 self.name 和 self.hunger (預設 50)。
+        3. 方法 feed()：self.hunger -= 10。
+        4. 方法 play()：self.hunger += 20。
+        5. 實作流程：建立 Pet('Pikachu') -> play() (hunger變70) -> feed() (hunger變60)。
+        【最終狀態】：Pikachu 的 hunger 應為 60。
         `;
     }
-    else if (modIdStr === "20413") { // Ch14 日誌 (File)
+    // 🔥 [新增/修改] Ch14 檔案：成績結算
+    else if (modIdStr === "20413") { 
         correctAnswerInfo = `
-        【題目背景】：日誌小管家 (檔案讀寫)。
-        【需求】：
-        - 使用 with open() as f 語法 (確保關閉)。
-        - 讀取模式 'r' 統計字數/行數。
-        - 寫入模式 'w' 或 'a' 寫入結果。
+        【題目背景】：成績結算小幫手 (File I/O 完整流程)。
+        【指定測資】：分數列表 [80, 60, 45, 90, 100]。
+        【標準解法】：
+        1. 步驟一 (建立資料)：使用 'w' 模式開啟 'scores.txt'，利用迴圈將 list 中的分數寫入檔案 (記得加換行符號 \\n)。
+        2. 步驟二 (讀取計算)：使用 'r' 模式讀取 'scores.txt'，將字串轉為 int 並計算平均 (總分375 / 5 = 75.0)。
+        3. 步驟三 (輸出報告)：使用 'w' 模式開啟 'report.txt'，寫入 "平均分數：75.0"。
+        【檢查重點】：
+        - 是否有先寫入檔案 (避免 FileNotFoundError)？
+        - 是否正確使用 with open() 語法？
+        - 讀寫模式 ('r', 'w') 是否正確切換？
         `;
     }
-    else if (modIdStr === "2056") { // Ch15 防錯 (Try-Except)
+    // 🔥 [新增/修改] Ch15 防錯：安全除法器
+    else if (modIdStr === "2056") { 
         correctAnswerInfo = `
-        【題目背景】：防錯小偵探。
+        【題目背景】：安全除法器 (Try-Except)。
         【需求】：
-        - 使用 try-except 結構捕捉錯誤。
-        - 避免程式因為 ValueError 或 ZeroDivisionError 而崩潰。
-        - 顯示友善的錯誤訊息。
+        - 輸入：兩個變數 a, b。
+        - 運算：print(a / b)。
+        - 異常處理 1：捕捉 ValueError (防止輸入非數字)。
+        - 異常處理 2：捕捉 ZeroDivisionError (防止除以 0)。
+        【檢查重點】：學生是否正確使用了 try-except 結構，並分別處理了上述兩種特定的錯誤類型。
         `;
     }
     const systemPrompt = `
