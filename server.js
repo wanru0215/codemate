@@ -465,6 +465,33 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ message: '伺服器內部錯誤' });
   }
 });
+// 忘記密碼 API
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { studentId, name, newPassword } = req.body;
+    
+    if (!studentId || !name || !newPassword) {
+      return res.status(400).json({ message: '學號、姓名和新密碼為必填' });
+    }
+
+    // 核對學號與姓名是否吻合（安全驗證）
+    const student = await Student.findOne({ studentId, name });
+    if (!student) {
+      return res.status(404).json({ message: '找不到此學生或姓名不符，請確認輸入正確' });
+    }
+
+    // 重新雜湊(Hash)新密碼並存檔
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    student.password = hashedPassword;
+    await student.save();
+
+    res.status(200).json({ message: '密碼重設成功，請使用新密碼登入' });
+  } catch (error) {
+    console.error('重設密碼錯誤:', error);
+    res.status(500).json({ message: '伺服器內部錯誤' });
+  }
+});
 
 // Gemini API 代理
 app.post("/api/chat", async (req, res) => {
