@@ -428,6 +428,7 @@
       const [studentName, setStudentName] = useState('');
       const [password, setPassword] = useState('');
       const [isLoggedIn, setIsLoggedIn] = useState(false);
+	  const [isForgotPasswordView, setIsForgotPasswordView] = useState(false);
       const [welcomeMessage, setWelcomeMessage] = useState('');
       const [message, setMessage] = useState('');
       const [showMessage, setShowMessage] = useState(false);
@@ -1632,6 +1633,27 @@
             showMessageModal('與伺服器連線失敗，請檢查後端伺服器是否正在運行。');
         }
       };
+	  const handleForgotPassword = async (e) => {
+		  e.preventDefault();
+		  try {
+			// 注意：後端接收的是 name，但您的變數叫 studentName，所以這裡幫您對接好
+			const res = await fetch('/api/reset-password', {
+			  method: 'POST',
+			  headers: { 'Content-Type': 'application/json' },
+			  body: JSON.stringify({ studentId, name: studentName, newPassword: password }) 
+			});
+			const data = await res.json();
+			if (res.ok) {
+			  showMessageModal('密碼重設成功！請使用新密碼登入。');
+			  setIsForgotPasswordView(false); // 成功後切回登入畫面
+			  setPassword(''); // 清空密碼
+			} else {
+			  showMessageModal(data.message || '重設失敗');
+			}
+		  } catch (error) {
+			showMessageModal('伺服器錯誤，請稍後再試');
+		  }
+		};
 
       const saveConversation = async (messagesToSave) => {
         const currentStudentId = localStorage.getItem('studentId');
@@ -2350,43 +2372,84 @@
       );
       };
       const renderAuthContent = () => {
-        return (
-          <div className="flex flex-col items-center justify-center min-h-screen p-4">
-            <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
-              <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
-                {isLoginView ? '學生登入' : '學生註冊'}
-              </h2>
-              <form className="space-y-6" onSubmit={handleAction}>
-                <div className="flex items-center justify-between">
-                  <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
-                  <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                </div>
-                {!isLoginView && (
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
-                    <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
-                  <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                </div>
-                <div className="pt-4">
-                  <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-                    {isLoginView ? '登入' : '註冊'}
-                  </button>
-                </div>
-                <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
-                  {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
-                </button>
-              </form>
-            </div>
-          </div>
-        );
-      };
+		  return (
+		    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+		      <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
+		        
+		        {/* 動態標題 */}
+		        <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
+		          {isForgotPasswordView ? '重設密碼' : (isLoginView ? '學生登入' : '學生註冊')}
+		        </h2>
+		
+		        {isForgotPasswordView ? (
+		          // 🔥 這是新增的「忘記密碼」表單 (樣式與您的註冊表單完全一樣)
+		          <form className="space-y-6" onSubmit={handleForgotPassword}>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-id-forgot" className="text-sm font-medium text-slate-300">學號</label>
+		              <input type="text" id="student-id-forgot" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-name-forgot" className="text-sm font-medium text-slate-300">姓名</label>
+		              <input type="text" id="student-name-forgot" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="作為身分驗證" />
+		            </div>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="password-forgot" className="text-sm font-medium text-slate-300">新密碼</label>
+		              <input type="password" id="password-forgot" required value={password} onChange={(e) => setPassword(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="請輸入新密碼" />
+		            </div>
+		            <div className="pt-4">
+		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+		                確認重設
+		              </button>
+		            </div>
+		            <button type="button" onClick={() => setIsForgotPasswordView(false)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
+		              記起密碼了？返回登入
+		            </button>
+		          </form>
+		        ) : (
+		          // 🛡️ 這裡完全是您原本的登入/註冊表單，一字未改！
+		          <form className="space-y-6" onSubmit={handleAction}>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
+		              <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            {!isLoginView && (
+		              <div className="flex items-center justify-between">
+		                <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
+		                <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+		                  className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		              </div>
+		            )}
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
+		              <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            <div className="pt-4">
+		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+		                {isLoginView ? '登入' : '註冊'}
+		              </button>
+		            </div>
+		            <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
+		              {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
+		            </button>
+		            
+		            {/* 🔥 新增：在登入畫面最下方加入忘記密碼的按鈕 */}
+		            {isLoginView && (
+		              <button type="button" onClick={() => setIsForgotPasswordView(true)} className="w-full text-slate-400 hover:text-slate-300 mt-2 text-sm underline">
+		                忘記密碼？
+		              </button>
+		            )}
+		          </form>
+		        )}
+		
+		      </div>
+		    </div>
+		  );
+		};
       
       const renderIntroContent = () => { return(
           <div className="relative bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
