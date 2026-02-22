@@ -161,6 +161,8 @@
             chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
             menu: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />,
             edit: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />,
+			sun: <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 21v-2.25m-6.364-.386l1.591-1.591M3 12h2.25m.386-6.364l1.591 1.591M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />,
+            moon: <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />,
         };
         const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
         return (
@@ -413,6 +415,17 @@
         20413: "成績結算：請撰寫一個完整的成績處理程式。1. **建立檔案**：請先建立一個 list 包含分數 [80, 60, 45, 90, 100]，並將其寫入 `scores.txt` (一行一個數字)。 2. **讀取與計算**：讀取剛剛建立的 `scores.txt`，計算平均分數。 3. **輸出結果**：將計算好的平均分數寫入新檔案 `report.txt`，內容格式為「平均分數：75.0」。",
         2056: "安全除法器：請設計一個除法程式，讓使用者輸入兩個數字 `a` 與 `b`，並計算 `a / b`。為了防止程式崩潰，請加上 try-except 處理：1. 當使用者輸入的不是數字時，捕捉 `ValueError` 並顯示「請輸入數字」。 2. 當使用者輸入除數為 0 時，捕捉 `ZeroDivisionError` 並顯示「分母不可為 0」。"
       };
+	  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot'
+      const [isDarkMode, setIsDarkMode] = useState(true); // 預設深色模式
+
+      // 🔥 [新增] 監聽深色模式改變，動態切換 HTML 的 class
+      React.useEffect(() => {
+          if (isDarkMode) {
+              document.documentElement.classList.add('dark');
+          } else {
+              document.documentElement.classList.remove('dark');
+          }
+      }, [isDarkMode]);
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // 目前是第幾題 (0-based)
       const [selectedAnswer, setSelectedAnswer] = useState(null); // 使用者選的答案
       const [currentFeedback, setCurrentFeedback] = useState(null); // "正確!" 或 "錯誤!"
@@ -1589,47 +1602,108 @@
 		};
 
 
-      const handleAction = async (event) => {
-        event.preventDefault();
-        const currentStudentId = studentId; // Capture studentId from state for this action
-        if (!currentStudentId.trim() || !password.trim() || (!isLoginView && !studentName.trim())) {
-          showMessageModal('所有欄位皆為必填。');
-          return;
+	 //  const handleAction = async (event) => {
+		// event.preventDefault();
+		// const currentStudentId = studentId; // Capture studentId from state for this action
+		// if (!currentStudentId.trim() || !password.trim() || (!isLoginView && !studentName.trim())) {
+		//   showMessageModal('所有欄位皆為必填。');
+		//   return;
+		// }
+		// const backendUrl = 'https://codemate-aezk.onrender.com';
+		// const endpoint = isLoginView ? `${backendUrl}/api/login` : `${backendUrl}/api/register`;
+		// const payload = isLoginView ? { studentId: currentStudentId, password } : { studentId: currentStudentId, name: studentName, password };
+		
+		// try {
+		// 	const response = await fetch(endpoint, {
+		// 		method: 'POST',
+		// 		headers: { 'Content-Type': 'application/json' },
+		// 		body: JSON.stringify(payload)
+		// 	});
+		// 	const data = await response.json();
+
+		// 	if (response.ok) {
+		// 		if (isLoginView) {
+		// 			localStorage.setItem('studentId', currentStudentId);
+		// 			localStorage.setItem('studentName', data.name);
+		// 			setStudentId(currentStudentId); // <<< --- FIX: Ensure state is set immediately
+		// 			setIsLoggedIn(true);
+		// 			setWelcomeMessage(`歡迎回來, ${data.name} (${currentStudentId})!`);
+		// 			showMessageModal(data.message || '登入成功！');
+		// 			setPage('intro');
+		// 		} else {
+		// 			showMessageModal(data.message || '註冊成功！請使用您的學號登入。');
+		// 			setIsLoginView(true);
+		// 			setStudentId('');
+		// 			setStudentName('');
+		// 			setPassword('');
+		// 		}
+		// 	} else {
+		// 		showMessageModal(`${isLoginView ? '登入' : '註冊'}失敗: ${data.message}`);
+		// 	}
+		// } catch (error) {
+		// 	console.error('請求失敗:', error);
+		// 	showMessageModal('與伺服器連線失敗，請檢查後端伺服器是否正在運行。');
+		// }
+	 //  };
+	  // 🔥 處理登入、註冊、忘記密碼的統一函數
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        
+        // 1. 處理忘記密碼
+        if (authMode === 'forgot') {
+            try {
+                const res = await fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId, name, newPassword: password }) 
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessageModal('密碼重設成功！請使用新密碼登入。');
+                    setAuthMode('login'); // 切回登入畫面
+                    setPassword('');
+                } else {
+                    showMessageModal(data.message || '重設失敗');
+                }
+            } catch (error) {
+                showMessageModal('伺服器錯誤，請稍後再試');
+            }
+            return;
         }
-        const backendUrl = 'https://codemate-aezk.onrender.com';
-        const endpoint = isLoginView ? `${backendUrl}/api/login` : `${backendUrl}/api/register`;
-        const payload = isLoginView ? { studentId: currentStudentId, password } : { studentId: currentStudentId, name: studentName, password };
+
+        // 2. 處理註冊或登入
+        const endpoint = authMode === 'register' ? '/api/register' : '/api/login';
+        const payload = authMode === 'register' ? { studentId, name, password } : { studentId, password };
         
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                if (isLoginView) {
-                    localStorage.setItem('studentId', currentStudentId);
-                    localStorage.setItem('studentName', data.name);
-                    setStudentId(currentStudentId); // <<< --- FIX: Ensure state is set immediately
-                    setIsLoggedIn(true);
-                    setWelcomeMessage(`歡迎回來, ${data.name} (${currentStudentId})!`);
-                    showMessageModal(data.message || '登入成功！');
-                    setPage('intro');
-                } else {
-                    showMessageModal(data.message || '註冊成功！請使用您的學號登入。');
-                    setIsLoginView(true);
-                    setStudentId('');
-                    setStudentName('');
-                    setPassword('');
-                }
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          
+          if (res.ok) {
+            if (authMode === 'register') {
+              showMessageModal('註冊成功！請登入。');
+              setAuthMode('login');
             } else {
-                showMessageModal(`${isLoginView ? '登入' : '註冊'}失敗: ${data.message}`);
+              // 登入成功的處理
+              localStorage.setItem('studentId', studentId);
+              localStorage.setItem('studentName', data.name);
+              setIsLoggedIn(true);
+              setPage('learning');
+              showMessageModal('登入成功！');
+              // 載入工作區與其他資料 (請確保這裡呼叫了您原本登入成功後的函數)
+              loadWorkspace(studentId); 
+              fetchQuizProgress(studentId);
+              fetchWorksheetAnswers(studentId);
             }
+          } else {
+            showMessageModal(data.message || '發生錯誤');
+          }
         } catch (error) {
-            console.error('請求失敗:', error);
-            showMessageModal('與伺服器連線失敗，請檢查後端伺服器是否正在運行。');
+          showMessageModal('伺服器錯誤，請稍後再試');
         }
       };
 
@@ -2349,40 +2423,138 @@
       </div>
       );
       };
+      // const renderAuthContent = () => {
+      //   return (
+      //     <div className="flex flex-col items-center justify-center min-h-screen p-4">
+      //       <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
+      //         <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
+      //           {isLoginView ? '學生登入' : '學生註冊'}
+      //         </h2>
+      //         <form className="space-y-6" onSubmit={handleAction}>
+      //           <div className="flex items-center justify-between">
+      //             <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
+      //             <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+      //               className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+      //           </div>
+      //           {!isLoginView && (
+      //             <div className="flex items-center justify-between">
+      //               <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
+      //               <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+      //                 className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+      //             </div>
+      //           )}
+      //           <div className="flex items-center justify-between">
+      //             <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
+      //             <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
+      //               className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+      //           </div>
+      //           <div className="pt-4">
+      //             <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+      //               {isLoginView ? '登入' : '註冊'}
+      //             </button>
+      //           </div>
+      //           <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
+      //             {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
+      //           </button>
+      //         </form>
+      //       </div>
+      //     </div>
+      //   );
+      // };
+	 // 🔥 全新的登入/註冊/忘記密碼畫面
       const renderAuthContent = () => {
         return (
-          <div className="flex flex-col items-center justify-center min-h-screen p-4">
-            <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
-              <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
-                {isLoginView ? '學生登入' : '學生註冊'}
-              </h2>
-              <form className="space-y-6" onSubmit={handleAction}>
-                <div className="flex items-center justify-between">
-                  <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
-                  <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+          <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4 transition-colors duration-300">
+            
+            {/* 深淺色切換按鈕 (右上角) */}
+            <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="absolute top-5 right-5 p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors shadow-md"
+                title="切換深淺色模式"
+            >
+                <Icon name={isDarkMode ? "sun" : "moon"} className="w-6 h-6" />
+            </button>
+
+            <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-xl shadow-2xl overflow-hidden transition-colors duration-300 border border-slate-200 dark:border-slate-700">
+              <div className="p-8">
+                <div className="text-center mb-8">
+                  <h1 className="text-3xl font-bold text-teal-600 dark:text-teal-400 mb-2">CodeMate</h1>
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {authMode === 'login' ? '登入您的帳號以繼續學習' : 
+                     authMode === 'register' ? '建立新帳號開始您的學習之旅' : 
+                     '重設您的密碼'}
+                  </p>
                 </div>
-                {!isLoginView && (
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
-                    <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+
+                {/* 表單送出時呼叫 handleAuth */}
+                <form onSubmit={handleAuth} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">學號</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={studentId}
+                      onChange={(e) => setStudentId(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-teal-500 text-slate-900 dark:text-white"
+                      placeholder="請輸入學號"
+                    />
                   </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
-                  <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
-                    className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-                </div>
-                <div className="pt-4">
-                  <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-                    {isLoginView ? '登入' : '註冊'}
+                  
+                  {/* 註冊或忘記密碼時，需要輸入姓名 */}
+                  {(authMode === 'register' || authMode === 'forgot') && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">姓名</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-teal-500 text-slate-900 dark:text-white"
+                        placeholder="請輸入姓名作為驗證"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        {authMode === 'forgot' ? '新密碼' : '密碼'}
+                    </label>
+                    <input 
+                      type="password" 
+                      required 
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-teal-500 text-slate-900 dark:text-white"
+                      placeholder={authMode === 'forgot' ? '請輸入新密碼' : '請輸入密碼'}
+                    />
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+                  >
+                    {authMode === 'login' ? '登入' : 
+                     authMode === 'register' ? '註冊' : 
+                     '確認重設密碼'}
                   </button>
+                </form>
+
+                {/* 切換模式的按鈕 */}
+                <div className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+                  {authMode === 'login' ? (
+                      <>
+                        還沒有帳號？ <button type="button" onClick={() => setAuthMode('register')} className="text-teal-600 dark:text-teal-400 hover:text-teal-500 font-bold">立即註冊</button>
+                        <br/>
+                        <button type="button" onClick={() => setAuthMode('forgot')} className="mt-4 text-slate-500 hover:text-slate-400 underline">忘記密碼？</button>
+                      </>
+                  ) : (
+                      <>
+                        已經有帳號了？ <button type="button" onClick={() => setAuthMode('login')} className="text-teal-600 dark:text-teal-400 hover:text-teal-500 font-bold">返回登入</button>
+                      </>
+                  )}
                 </div>
-                <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
-                  {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
-                </button>
-              </form>
+
+              </div>
             </div>
           </div>
         );
@@ -3109,12 +3281,21 @@
 
       return (
         <div className="h-full flex flex-col">
-            <header className="h-14 bg-slate-900 border-b border-slate-800 shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0">
+            <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0 transition-colors">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold text-teal-400">CodeMate</h1>
+                    <h1 className="text-2xl font-bold text-teal-600 dark:text-teal-400">CodeMate</h1>
+                    
+                    {/* 🔥 [新增] 學習區的深淺色切換按鈕 */}
+                    <button
+                        onClick={() => setIsDarkMode(!isDarkMode)}
+                        className="p-1.5 ml-4 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        title="切換深淺色模式"
+                    >
+                        <Icon name={isDarkMode ? "sun" : "moon"} className="w-5 h-5" />
+                    </button>
                 </div>
                 {isLoggedIn && (
-                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-500/30">
+                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-50 text-red-500 dark:bg-red-500/20 px-3 py-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/30">
                         LogOut
                     </button>
                 )}
