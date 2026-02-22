@@ -20,6 +20,11 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+	<script>
+      tailwind.config = {
+        darkMode: 'class', 
+      }
+    </script>
     <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -437,7 +442,7 @@
 	  const [isDarkMode, setIsDarkMode] = useState(true);
 
       // 🔥 [新增] 當 isDarkMode 改變時，動態幫 <html> 標籤加上或移除 'dark' class
-      React.useEffect(() => {
+      useEffect(() => {
           if (isDarkMode) {
               document.documentElement.classList.add('dark');
           } else {
