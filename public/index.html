@@ -20,11 +20,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-	<script>
-      tailwind.config = {
-        darkMode: 'class', 
-      }
-    </script>
     <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -166,8 +161,6 @@
             chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
             menu: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />,
             edit: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />,
-			sun: <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 21v-2.25m-6.364-.386l1.591-1.591M3 12h2.25m.386-6.364l1.591 1.591M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />,
-            moon: <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />,
         };
         const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
         return (
@@ -439,16 +432,6 @@
       const [welcomeMessage, setWelcomeMessage] = useState('');
       const [message, setMessage] = useState('');
       const [showMessage, setShowMessage] = useState(false);
-	  const [isDarkMode, setIsDarkMode] = useState(true);
-
-      // 🔥 [新增] 當 isDarkMode 改變時，動態幫 <html> 標籤加上或移除 'dark' class
-      useEffect(() => {
-          if (isDarkMode) {
-              document.documentElement.classList.add('dark');
-          } else {
-              document.documentElement.classList.remove('dark');
-          }
-      }, [isDarkMode]);
       
       const messagesEndRef = useRef(null);
       const isComposing = useRef(false); // 用於追蹤中文輸入法狀態
@@ -2308,7 +2291,7 @@
                 ) : (
                   // --- 顯示當前題目 ---
                   question && (
-                    <div key={question.id} className="bg-white dark:bg-slate-900 p-4 rounded-md">
+                    <div key={question.id} className="bg-slate-900 p-4 rounded-md">
                       <p className="font-semibold mb-3 text-lg">{question.text}</p>
                       <div className="space-y-2">
                         {question.type === 'true-false' && (
@@ -2389,96 +2372,87 @@
       );
       };
       const renderAuthContent = () => {
-        return (
-          // 🔥 外層背景改為支援淺色 (bg-slate-50) 與深色 (dark:bg-slate-900)
-          <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-50 dark:bg-slate-900 transition-colors duration-300 relative">
-            
-            {/* 🔥 [新增] 右上角的深淺色切換按鈕 */}
-            <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="absolute top-5 right-5 p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors shadow-md"
-                title="切換深淺色模式"
-            >
-                <Icon name={isDarkMode ? "sun" : "moon"} className="w-6 h-6" />
-            </button>
-
-            <div className="bg-white dark:bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto transition-colors duration-300">
-              
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6 text-center">
-                {isForgotPasswordView ? '重設密碼' : (isLoginView ? '學生登入' : '學生註冊')}
-              </h2>
-
-              {isForgotPasswordView ? (
-                // --- 忘記密碼表單 ---
-                <form className="space-y-6" onSubmit={handleForgotPassword}>
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-id-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">學號</label>
-                    <input type="text" id="student-id-forgot" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-name-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">姓名</label>
-                    <input type="text" id="student-name-forgot" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" placeholder="作為身分驗證" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="password-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">新密碼</label>
-                    <input type="password" id="password-forgot" required value={password} onChange={(e) => setPassword(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" placeholder="請輸入新密碼" />
-                  </div>
-                  <div className="pt-4">
-                    <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-100 dark:focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300">
-                      確認重設
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => setIsForgotPasswordView(false)} className="w-full text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 mt-2 text-sm">
-                    記起密碼了？返回登入
-                  </button>
-                </form>
-              ) : (
-                // --- 登入/註冊表單 ---
-                <form className="space-y-6" onSubmit={handleAction}>
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="student-id-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">學號</label>
-                    <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
-                  </div>
-                  {!isLoginView && (
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="student-name-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">姓名</label>
-                      <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-                        className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="password-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">密碼</label>
-                    <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
-                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
-                  </div>
-                  <div className="pt-4">
-                    <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-100 dark:focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300">
-                      {isLoginView ? '登入' : '註冊'}
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 mt-2 text-sm">
-                    {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
-                  </button>
-                  
-                  {isLoginView && (
-                    <button type="button" onClick={() => setIsForgotPasswordView(true)} className="w-full text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-2 text-sm underline">
-                      忘記密碼？
-                    </button>
-                  )}
-                </form>
-              )}
-
-            </div>
-          </div>
-        );
-      };
+		  return (
+		    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+		      <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
+		        
+		        {/* 動態標題 */}
+		        <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
+		          {isForgotPasswordView ? '重設密碼' : (isLoginView ? '學生登入' : '學生註冊')}
+		        </h2>
+		
+		        {isForgotPasswordView ? (
+		          // 🔥 這是新增的「忘記密碼」表單 (樣式與您的註冊表單完全一樣)
+		          <form className="space-y-6" onSubmit={handleForgotPassword}>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-id-forgot" className="text-sm font-medium text-slate-300">學號</label>
+		              <input type="text" id="student-id-forgot" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-name-forgot" className="text-sm font-medium text-slate-300">姓名</label>
+		              <input type="text" id="student-name-forgot" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="作為身分驗證" />
+		            </div>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="password-forgot" className="text-sm font-medium text-slate-300">新密碼</label>
+		              <input type="password" id="password-forgot" required value={password} onChange={(e) => setPassword(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="請輸入新密碼" />
+		            </div>
+		            <div className="pt-4">
+		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+		                確認重設
+		              </button>
+		            </div>
+		            <button type="button" onClick={() => setIsForgotPasswordView(false)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
+		              記起密碼了？返回登入
+		            </button>
+		          </form>
+		        ) : (
+		          // 🛡️ 這裡完全是您原本的登入/註冊表單，一字未改！
+		          <form className="space-y-6" onSubmit={handleAction}>
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
+		              <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            {!isLoginView && (
+		              <div className="flex items-center justify-between">
+		                <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
+		                <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+		                  className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		              </div>
+		            )}
+		            <div className="flex items-center justify-between">
+		              <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
+		              <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
+		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
+		            </div>
+		            <div className="pt-4">
+		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+		                {isLoginView ? '登入' : '註冊'}
+		              </button>
+		            </div>
+		            <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
+		              {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
+		            </button>
+		            
+		            {/* 🔥 新增：在登入畫面最下方加入忘記密碼的按鈕 */}
+		            {isLoginView && (
+		              <button type="button" onClick={() => setIsForgotPasswordView(true)} className="w-full text-slate-400 hover:text-slate-300 mt-2 text-sm underline">
+		                忘記密碼？
+		              </button>
+		            )}
+		          </form>
+		        )}
+		
+		      </div>
+		    </div>
+		  );
+		};
       
       const renderIntroContent = () => { return(
-          <div className="relative bg-white dark:bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
+          <div className="relative bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-slate-100 mb-4">歡迎來到 CodeMate！</h2>
             <p className="text-xl text-slate-300 mb-8">{welcomeMessage}</p>
             <p className="text-lg text-slate-200 max-w-2xl mx-auto">
@@ -2503,7 +2477,7 @@
             {/* 左側區塊 */}
             <div id="left-pane" className="flex flex-col gap-2">
                 {/* 教材區 */}
-                <div id="material-pane" className="flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-800 rounded-lg">
+                <div id="material-pane" className="flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-lg">
                     {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full rounded-lg" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
                     {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
                     {currentModule?.type === 'quiz' && (
@@ -2512,7 +2486,7 @@
                         <p className="text-slate-300 mb-8">{currentModule.content}</p>
                         <button 
                           onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-white dark:bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
+                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
                         >
                           {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
                         </button>
@@ -2526,9 +2500,9 @@
                       </div>
                     )}
                     {currentModule?.type === 'worksheet' && (
-                      <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
+                      <div className="w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden">
                         {/* 學習單標題列 */}
-                        <div className="bg-white dark:bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
+                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
                           <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
 	                          <div className="flex gap-2">
 								<button 
@@ -2883,10 +2857,10 @@
                         </div>
                       </div>
                     )}
-                    {!currentModule && <div className="w-full h-full rounded-lg bg-white dark:bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
+                    {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
                 </div>
                 {/* 聊天機器人區 */}
-                <div id="chat-pane" className="flex flex-col bg-white dark:bg-slate-900 rounded-lg p-4 border border-slate-800">
+                <div id="chat-pane" className="flex flex-col bg-slate-900 rounded-lg p-4 border border-slate-800">
                     <div className="flex-1 overflow-y-auto bg-slate-950 rounded-lg p-3 shadow-sm mb-4">
                         {chatMessages.map((msg) => (
                         <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600/70 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
@@ -2921,7 +2895,7 @@
             </div>
             
             {/* 右側區塊 */}
-            <div id="right-pane" className="h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg border border-slate-800">
+            <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
                   <div className="flex border-b border-slate-800 p-2 items-center gap-1 overflow-x-auto">
                       {/* Tabs 標籤列 */}
                       {tabs.map(tab => (
@@ -3056,7 +3030,7 @@
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-white dark:bg-slate-900 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
                             <textarea
                                 value={activeTab.content}
                                 onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
@@ -3074,7 +3048,7 @@
                           </div>
                       )}
 					  {activeTab?.type === 'feedback' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-white dark:bg-slate-900 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
                             <div className="flex-1 p-4 overflow-y-auto prose prose-invert max-w-none text-sm">
                                 {/* 使用 dangerouslySetInnerHTML 來渲染 Markdown 轉成的 HTML */}
                                 <div dangerouslySetInnerHTML={{ __html: marked.parse(activeTab.content) }}></div>
@@ -3117,7 +3091,7 @@
         if (page !== 'learning') return null;
 
         return (
-            <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
+            <div className={`flex-shrink-0 flex flex-col bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
                 {isSidebarOpen && (
                     <>
                         <div className="flex items-center justify-between mb-4">
@@ -3198,21 +3172,12 @@
 
       return (
         <div className="h-full flex flex-col">
-            <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0 transition-colors duration-300">
+            <header className="h-14 bg-slate-900 border-b border-slate-800 shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold text-teal-600 dark:text-teal-400">CodeMate</h1>
-                    
-                    {/* 🔥 [新增] 學習區的深淺色切換按鈕 */}
-                    <button
-                        onClick={() => setIsDarkMode(!isDarkMode)}
-                        className="p-1.5 ml-2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                        title="切換深淺色模式"
-                    >
-                        <Icon name={isDarkMode ? "sun" : "moon"} className="w-5 h-5" />
-                    </button>
+                    <h1 className="text-2xl font-bold text-teal-400">CodeMate</h1>
                 </div>
                 {isLoggedIn && (
-                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-50 dark:bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/30 transition-colors">
+                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-500/30">
                         LogOut
                     </button>
                 )}
