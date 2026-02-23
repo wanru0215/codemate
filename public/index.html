@@ -2308,7 +2308,7 @@
                 ) : (
                   // --- 顯示當前題目 ---
                   question && (
-                    <div key={question.id} className="bg-slate-900 p-4 rounded-md">
+                    <div key={question.id} className="bg-white dark:bg-slate-900 p-4 rounded-md">
                       <p className="font-semibold mb-3 text-lg">{question.text}</p>
                       <div className="space-y-2">
                         {question.type === 'true-false' && (
@@ -2478,7 +2478,7 @@
       };
       
       const renderIntroContent = () => { return(
-          <div className="relative bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
+          <div className="relative bg-white dark:bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-slate-100 mb-4">歡迎來到 CodeMate！</h2>
             <p className="text-xl text-slate-300 mb-8">{welcomeMessage}</p>
             <p className="text-lg text-slate-200 max-w-2xl mx-auto">
@@ -2503,7 +2503,7 @@
             {/* 左側區塊 */}
             <div id="left-pane" className="flex flex-col gap-2">
                 {/* 教材區 */}
-                <div id="material-pane" className="flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-lg">
+                <div id="material-pane" className="flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-800 rounded-lg">
                     {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full rounded-lg" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
                     {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
                     {currentModule?.type === 'quiz' && (
@@ -2512,7 +2512,7 @@
                         <p className="text-slate-300 mb-8">{currentModule.content}</p>
                         <button 
                           onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
+                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-white dark:bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
                         >
                           {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
                         </button>
@@ -2526,9 +2526,9 @@
                       </div>
                     )}
                     {currentModule?.type === 'worksheet' && (
-                      <div className="w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden">
+                      <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
                         {/* 學習單標題列 */}
-                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
+                        <div className="bg-white dark:bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
                           <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
 	                          <div className="flex gap-2">
 								<button 
@@ -2883,10 +2883,10 @@
                         </div>
                       </div>
                     )}
-                    {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
+                    {!currentModule && <div className="w-full h-full rounded-lg bg-white dark:bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
                 </div>
                 {/* 聊天機器人區 */}
-                <div id="chat-pane" className="flex flex-col bg-slate-900 rounded-lg p-4 border border-slate-800">
+                <div id="chat-pane" className="flex flex-col bg-white dark:bg-slate-900 rounded-lg p-4 border border-slate-800">
                     <div className="flex-1 overflow-y-auto bg-slate-950 rounded-lg p-3 shadow-sm mb-4">
                         {chatMessages.map((msg) => (
                         <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600/70 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
@@ -2921,7 +2921,7 @@
             </div>
             
             {/* 右側區塊 */}
-            <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
+            <div id="right-pane" className="h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg border border-slate-800">
                   <div className="flex border-b border-slate-800 p-2 items-center gap-1 overflow-x-auto">
                       {/* Tabs 標籤列 */}
                       {tabs.map(tab => (
@@ -3056,7 +3056,7 @@
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-white dark:bg-slate-900 rounded-md">
                             <textarea
                                 value={activeTab.content}
                                 onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
@@ -3074,7 +3074,7 @@
                           </div>
                       )}
 					  {activeTab?.type === 'feedback' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-white dark:bg-slate-900 rounded-md">
                             <div className="flex-1 p-4 overflow-y-auto prose prose-invert max-w-none text-sm">
                                 {/* 使用 dangerouslySetInnerHTML 來渲染 Markdown 轉成的 HTML */}
                                 <div dangerouslySetInnerHTML={{ __html: marked.parse(activeTab.content) }}></div>
@@ -3117,7 +3117,7 @@
         if (page !== 'learning') return null;
 
         return (
-            <div className={`flex-shrink-0 flex flex-col bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
+            <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
                 {isSidebarOpen && (
                     <>
                         <div className="flex items-center justify-between mb-4">
