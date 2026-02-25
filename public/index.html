@@ -20,6 +20,11 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+	<script>
+      tailwind.config = {
+        darkMode: 'class', 
+      }
+    </script>
     <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -67,9 +72,13 @@
             height: 100%;
         }
         .gutter {
-            background-color: #1e293b; /* slate-800 */
+            background-color: #cbd5e1; /* 淺色模式：slate-300 */
             background-repeat: no-repeat;
             background-position: 50%;
+        }
+        /* 當 html 有 .dark 時的顏色 */
+        .dark .gutter {
+            background-color: #1e293b; /* 深色模式：slate-800 */
         }
         .gutter.gutter-horizontal {
             cursor: col-resize;
@@ -120,7 +129,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-300 font-sans">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-300 font-sans transition-colors duration-300">
 
 <div id="root"></div>
 
@@ -161,6 +170,8 @@
             chevron: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />,
             menu: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />,
             edit: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />,
+			sun: <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 21v-2.25m-6.364-.386l1.591-1.591M3 12h2.25m.386-6.364l1.591 1.591M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />,
+            moon: <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />,
         };
         const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
         return (
@@ -170,11 +181,10 @@
         );
     };
 
-    function CodeMirrorEditor({ activeTab, handleTabContentChange, handleCodeKeyDown }) {
+    function CodeMirrorEditor({ activeTab, handleTabContentChange, handleCodeKeyDown, isDarkMode }) { // 🔥 這裡新增接收 isDarkMode
       const editorRef = React.useRef(null);
       const cmInstance = React.useRef(null);
       
-      // --- [新增] 使用 Refs 來保存 props，這樣就不會觸發 useEffect 重新綁定 ---
       const onChangeRef = React.useRef(handleTabContentChange);
       const onKeyDownRef = React.useRef(handleCodeKeyDown);
 
@@ -182,29 +192,26 @@
           onChangeRef.current = handleTabContentChange;
           onKeyDownRef.current = handleCodeKeyDown;
       }, [handleTabContentChange, handleCodeKeyDown]);
-      // --- [新增結束] ---
 
-      // --- [修改] Effect 1: 初始化與銷毀 (只執行一次) ---
+      // --- 初始化 ---
       React.useEffect(() => {
           if (editorRef.current && !cmInstance.current) {
-                  // 根據 activeTab 的檔名動態設定 mode
                   const mode = activeTab?.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
 
                   cmInstance.current = window.CodeMirror.fromTextArea(editorRef.current, {
                       mode: mode,
-                      theme: "dracula",
+                      theme: isDarkMode ? "dracula" : "default", // ✅ 現在讀得到 isDarkMode 了
                   lineNumbers: true,
                   indentUnit: 4,
                   tabSize: 4,
-                  // *** [新增] 縮排優化設定 ***
-                  indentWithTabs: false, // 確保縮排使用空格而不是 Tab 字符
-                  smartIndent: true,     // 啟用智慧縮排，有助於 Backspace 一次刪除一個縮排
+                  indentWithTabs: false,
+                  smartIndent: true,
                   extraKeys: {
                     Tab: function(cm) {
                       if (cm.somethingSelected()) {
                         cm.indentSelection("add");
                       } else {
-                        cm.replaceSelection("    ", "end"); // 插入 4 個空格
+                        cm.replaceSelection("    ", "end");
                       }
                     },
                     Backspace: function(cm) {
@@ -212,73 +219,43 @@
                       const cursor = cm.getCursor();
                       const line = cm.getLine(cursor.line);
                       const beforeCursor = line.slice(0, cursor.ch);
-
-                      // 如果游標前面全是空白且長度是縮排倍數，則一次刪掉一層縮排
                       if (/^\s+$/.test(beforeCursor) && (beforeCursor.length % spacesPerIndent === 0)) {
-                        cm.replaceRange(
-                          "",
-                          { line: cursor.line, ch: cursor.ch - spacesPerIndent },
-                          { line: cursor.line, ch: cursor.ch }
-                        );
+                        cm.replaceRange("", { line: cursor.line, ch: cursor.ch - spacesPerIndent }, { line: cursor.line, ch: cursor.ch });
                       } else {
                         cm.execCommand("delCharBefore");
                       }
                     }
                   },
-                  // *** [新增結束] ***
-                  // --- [新增] 啟用插件 (見步驟 2 & 3) ---
                   autoCloseBrackets: true,
                   matchBrackets: true
-                  // --- [新增結束] ---
               });
           }
-
-          // 組件卸載時清理 CodeMirror 實例 (只執行一次)
           return () => {
               if (cmInstance.current) {
-                  cmInstance.current.toTextArea(); // 恢復成 textarea
+                  cmInstance.current.toTextArea();
                   cmInstance.current = null;
               }
           };
-      }, []); // <-- [關鍵] 空依賴陣列，確保只執行一次
-      // --- [修改結束] ---
+      }, []);
 
-      // --- [新增] Effect 1.5: 重新綁定事件監聽器 (當 activeTab 改變時) ---
+      // 🔥 [新增] 監聽深淺色切換，動態改變編輯器主題
       React.useEffect(() => {
           if (cmInstance.current) {
-              // 1. 清理舊的監聽器 (如果有的話，雖然 CodeMirror 的 on/off 處理得很好，但明確清理是好習慣)
-              // 由於我們無法輕易存取舊的匿名函數，我們只能依賴 CodeMirror 的內部機制。
-              // 更好的做法是確保我們傳遞給 on 的函數是穩定的，或者在每次 activeTab 改變時重新綁定。
-              
-              // 為了確保 change 事件能拿到最新的 activeTab.id，我們必須在 activeTab 改變時重新綁定。
-              // 由於我們在 Effect 1 中沒有綁定，我們在這裡綁定並在清理函數中移除。
-              
-              // 為了避免重複綁定，我們使用一個 Ref 來儲存監聽器函數
-              const changeHandler = (cm) => {
-                  if (activeTab) {
-                      onChangeRef.current(activeTab.id, cm.getValue());
-                  }
-              };
-              
-              const keydownHandler = (cm, event) => {
-                  if (activeTab) {
-                      onKeyDownRef.current(cm, event, activeTab.id);
-                  }
-              };
-              
-              // 移除舊的監聽器 (如果存在)
+              cmInstance.current.setOption("theme", isDarkMode ? "dracula" : "default");
+          }
+      }, [isDarkMode]);
+
+      // --- 以下內容保持不變 (重新綁定監聽器與同步內容的邏輯) ---
+      React.useEffect(() => {
+          if (cmInstance.current) {
+              const changeHandler = (cm) => { if (activeTab) onChangeRef.current(activeTab.id, cm.getValue()); };
+              const keydownHandler = (cm, event) => { if (activeTab) onKeyDownRef.current(cm, event, activeTab.id); };
               cmInstance.current.off("change", cmInstance.current.__changeHandler);
               cmInstance.current.off("keydown", cmInstance.current.__keydownHandler);
-              
-              // 綁定新的監聽器
               cmInstance.current.on("change", changeHandler);
               cmInstance.current.on("keydown", keydownHandler);
-              
-              // 儲存新的監聽器函數，以便下次清理
               cmInstance.current.__changeHandler = changeHandler;
               cmInstance.current.__keydownHandler = keydownHandler;
-              
-              // 清理函數：當 activeTab 改變或組件卸載時，移除監聽器
               return () => {
                   if (cmInstance.current) {
                       cmInstance.current.off("change", changeHandler);
@@ -286,100 +263,35 @@
                   }
               };
           }
-      }, [activeTab, onChangeRef, onKeyDownRef]); // 依賴 activeTab 確保切換時重新綁定
-      // --- [新增] Effect 3: 確保 mode 在 activeTab 切換時更新 ---
+      }, [activeTab, onChangeRef, onKeyDownRef]);
+
       React.useEffect(() => {
           if (cmInstance.current && activeTab) {
               const newMode = activeTab.fileName ? getCodeMirrorMode(activeTab.fileName) : "python";
               const currentMode = cmInstance.current.getOption("mode");
-              
-              // 只有在 mode 確實改變時才更新
               if (JSON.stringify(newMode) !== JSON.stringify(currentMode)) {
                   cmInstance.current.setOption("mode", newMode);
               }
           }
       }, [activeTab]);
-      // --- [新增結束] ---
-      // --- [新增結束] ---
 
-      // --- [修改] Effect 2: 同步內容 (當 activeTab 改變時) ---
       React.useEffect(() => {
           if (cmInstance.current) {
               const currentVal = cmInstance.current.getValue();
-
-              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
               if (activeTab && activeTab.content !== currentVal) {
-                  // 儲存目前游標位置
                   const cursor = cmInstance.current.getCursor();
-                  
-                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
-                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
                   cmInstance.current.off("change", cmInstance.current.__changeHandler);
-                  
                   cmInstance.current.setValue(activeTab.content);
-                  
-                  // 重新開啟 change 事件
                   cmInstance.current.on("change", cmInstance.current.__changeHandler);
-                  
-                  // 嘗試恢復游標位置 (如果行數還存在)
-                  try {
-                      cmInstance.current.setCursor(cursor);
-                  } catch (e) {
-                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
-                  }
-                  
-                  // 確保編輯器獲得焦點
+                  try { cmInstance.current.setCursor(cursor); } catch (e) { cmInstance.current.setCursor(cmInstance.current.lineCount(), 0); }
                   setTimeout(() => cmInstance.current.focus(), 0);
-
               } else if (!activeTab && currentVal !== '') {
-                  // 如果沒有 activeTab，清空編輯器
                   cmInstance.current.setValue('');
               }
           }
-      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
-      // --- [修改結束] ---
+      }, [activeTab]);
 
-      // --- [新增] Effect 2: 同步內容 (當 activeTab 改變時) ---
-      React.useEffect(() => {
-          if (cmInstance.current) {
-              const currentVal = cmInstance.current.getValue();
-
-              // [關鍵修復] 只有在內容確實不同時才 setValue，避免無限迴圈
-              if (activeTab && activeTab.content !== currentVal) {
-                  // 儲存目前游標位置
-                  const cursor = cmInstance.current.getCursor();
-                  
-                  // 暫時關閉 change 事件，避免 setValue 觸發 change 導致 state 更新
-                  // 這是 CodeMirror 處理 React 狀態同步的標準做法
-                  cmInstance.current.off("change", cmInstance.current.__changeHandler);
-                  
-                  cmInstance.current.setValue(activeTab.content);
-                  
-                  // 重新開啟 change 事件
-                  cmInstance.current.on("change", cmInstance.current.__changeHandler);
-                  
-                  // 嘗試恢復游標位置 (如果行數還存在)
-                  try {
-                      cmInstance.current.setCursor(cursor);
-                  } catch (e) {
-                      cmInstance.current.setCursor(cmInstance.current.lineCount(), 0);
-                  }
-                  
-                  // 確保編輯器獲得焦點
-                  setTimeout(() => cmInstance.current.focus(), 0);
-
-              } else if (!activeTab && currentVal !== '') {
-                  // 如果沒有 activeTab，清空編輯器
-                  cmInstance.current.setValue('');
-              }
-          }
-      }, [activeTab]); // <-- [關鍵] 依賴 activeTab (物件)
-      // --- [修改結束] ---
-
-      return (
-          // 我們仍然需要 textarea 作為 CodeMirror 的基礎
-          <textarea ref={editorRef} style={{ display: 'none' }} />
-      );
+      return ( <textarea ref={editorRef} style={{ display: 'none' }} /> );
     }
 
     const App = () => {
@@ -432,6 +344,16 @@
       const [welcomeMessage, setWelcomeMessage] = useState('');
       const [message, setMessage] = useState('');
       const [showMessage, setShowMessage] = useState(false);
+	  const [isDarkMode, setIsDarkMode] = useState(true);
+
+      // 🔥 [新增] 當 isDarkMode 改變時，動態幫 <html> 標籤加上或移除 'dark' class
+      useEffect(() => {
+          if (isDarkMode) {
+              document.documentElement.classList.add('dark');
+          } else {
+              document.documentElement.classList.remove('dark');
+          }
+      }, [isDarkMode]);
       
       const messagesEndRef = useRef(null);
       const isComposing = useRef(false); // 用於追蹤中文輸入法狀態
@@ -2272,7 +2194,7 @@
 
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 text-white rounded-lg shadow-xl w-full max-w-lg min-h-[300px] flex flex-col">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-lg shadow-xl w-full max-w-lg min-h-[300px] flex flex-col">
               <div className="p-4 border-b border-slate-700 flex justify-between items-center">
                 <h3 className="text-xl font-bold text-teal-400">{currentQuiz.title}</h3>
                 {!isQuizComplete && (
@@ -2291,12 +2213,16 @@
                 ) : (
                   // --- 顯示當前題目 ---
                   question && (
-                    <div key={question.id} className="bg-slate-900 p-4 rounded-md">
+                    <div key={question.id} className="bg-slate-50 dark:bg-slate-900 p-4 rounded-md border border-slate-200 dark:border-transparent">
                       <p className="font-semibold mb-3 text-lg">{question.text}</p>
                       <div className="space-y-2">
                         {question.type === 'true-false' && (
                           ['true', 'false'].map(value => (
-                            <label key={value} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === value ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
+                            <label key={value} className={`flex items-center space-x-2 p-3 rounded border transition-all cursor-pointer ${
+                                selectedAnswer === value 
+                                ? 'bg-teal-50 dark:bg-slate-600 border-teal-200 dark:border-transparent text-teal-700 dark:text-white shadow-sm' 
+                                : 'bg-white dark:bg-transparent border-transparent hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}>
                               <input type="radio" name={question.id} value={value} 
                                 checked={selectedAnswer === value}
                                 onChange={() => setSelectedAnswer(value)} 
@@ -2307,13 +2233,24 @@
                           ))
                         )}
                         {question.type === 'multiple-choice' && question.options.map(option => (
-                          <label key={option} className={`flex items-center space-x-2 p-3 rounded cursor-pointer ${selectedAnswer === option ? 'bg-slate-600' : 'hover:bg-slate-700'}`}>
-                            <input type="radio" name={question.id} value={option} 
+                          <label 
+                            key={option} 
+                            className={`flex items-center space-x-2 p-3 rounded border transition-all cursor-pointer ${
+                              selectedAnswer === option 
+                              ? 'bg-teal-50 dark:bg-slate-600 border-teal-200 dark:border-transparent text-teal-700 dark:text-white shadow-sm' 
+                              : 'bg-white dark:bg-transparent border-transparent hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <input 
+                              type="radio" 
+                              name={question.id} 
+                              value={option} 
                               checked={selectedAnswer === option}
                               onChange={() => setSelectedAnswer(option)}
-                              disabled={!!currentFeedback} // 答過就不能改
-                              className="form-radio text-teal-500 bg-slate-700 border-slate-600" />
-                            <span>{option}</span>
+                              disabled={!!currentFeedback}
+                              className="form-radio text-teal-600 dark:text-teal-500 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600" 
+                            />
+                            <span className="text-sm font-medium">{option}</span>
                           </label>
                         ))}
                       </div>
@@ -2372,99 +2309,116 @@
       );
       };
       const renderAuthContent = () => {
-		  return (
-		    <div className="flex flex-col items-center justify-center min-h-screen p-4">
-		      <div className="bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto">
-		        
-		        {/* 動態標題 */}
-		        <h2 className="text-2xl font-bold text-slate-100 mb-6 text-center">
-		          {isForgotPasswordView ? '重設密碼' : (isLoginView ? '學生登入' : '學生註冊')}
-		        </h2>
-		
-		        {isForgotPasswordView ? (
-		          // 🔥 這是新增的「忘記密碼」表單 (樣式與您的註冊表單完全一樣)
-		          <form className="space-y-6" onSubmit={handleForgotPassword}>
-		            <div className="flex items-center justify-between">
-		              <label htmlFor="student-id-forgot" className="text-sm font-medium text-slate-300">學號</label>
-		              <input type="text" id="student-id-forgot" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-		            </div>
-		            <div className="flex items-center justify-between">
-		              <label htmlFor="student-name-forgot" className="text-sm font-medium text-slate-300">姓名</label>
-		              <input type="text" id="student-name-forgot" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="作為身分驗證" />
-		            </div>
-		            <div className="flex items-center justify-between">
-		              <label htmlFor="password-forgot" className="text-sm font-medium text-slate-300">新密碼</label>
-		              <input type="password" id="password-forgot" required value={password} onChange={(e) => setPassword(e.target.value)}
-		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" placeholder="請輸入新密碼" />
-		            </div>
-		            <div className="pt-4">
-		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-		                確認重設
-		              </button>
-		            </div>
-		            <button type="button" onClick={() => setIsForgotPasswordView(false)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
-		              記起密碼了？返回登入
-		            </button>
-		          </form>
-		        ) : (
-		          // 🛡️ 這裡完全是您原本的登入/註冊表單，一字未改！
-		          <form className="space-y-6" onSubmit={handleAction}>
-		            <div className="flex items-center justify-between">
-		              <label htmlFor="student-id-input" className="text-sm font-medium text-slate-300">學號</label>
-		              <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
-		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-		            </div>
-		            {!isLoginView && (
-		              <div className="flex items-center justify-between">
-		                <label htmlFor="student-name-input" className="text-sm font-medium text-slate-300">姓名</label>
-		                <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
-		                  className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-		              </div>
-		            )}
-		            <div className="flex items-center justify-between">
-		              <label htmlFor="password-input" className="text-sm font-medium text-slate-300">密碼</label>
-		              <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
-		                className="w-64 px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out" />
-		            </div>
-		            <div className="pt-4">
-		              <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
-		                {isLoginView ? '登入' : '註冊'}
-		              </button>
-		            </div>
-		            <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-400 hover:text-teal-300 mt-2 text-sm">
-		              {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
-		            </button>
-		            
-		            {/* 🔥 新增：在登入畫面最下方加入忘記密碼的按鈕 */}
-		            {isLoginView && (
-		              <button type="button" onClick={() => setIsForgotPasswordView(true)} className="w-full text-slate-400 hover:text-slate-300 mt-2 text-sm underline">
-		                忘記密碼？
-		              </button>
-		            )}
-		          </form>
-		        )}
-		
-		      </div>
-		    </div>
-		  );
-		};
+        return (
+          // 🔥 外層背景改為支援淺色 (bg-slate-50) 與深色 (dark:bg-slate-900)
+          <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-50 dark:bg-slate-900 transition-colors duration-300 relative">
+            
+            {/* 🔥 [新增] 右上角的深淺色切換按鈕 */}
+            <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="absolute top-5 right-5 p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors shadow-md"
+                title="切換深淺色模式"
+            >
+                <Icon name={isDarkMode ? "sun" : "moon"} className="w-6 h-6" />
+            </button>
+
+            <div className="bg-white dark:bg-slate-900 border-2 border-teal-500/50 p-8 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-sm mx-auto transition-colors duration-300">
+              
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6 text-center">
+                {isForgotPasswordView ? '重設密碼' : (isLoginView ? '學生登入' : '學生註冊')}
+              </h2>
+
+              {isForgotPasswordView ? (
+                // --- 忘記密碼表單 ---
+                <form className="space-y-6" onSubmit={handleForgotPassword}>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="student-id-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">學號</label>
+                    <input type="text" id="student-id-forgot" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="student-name-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">姓名</label>
+                    <input type="text" id="student-name-forgot" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" placeholder="作為身分驗證" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="password-forgot" className="text-sm font-medium text-slate-700 dark:text-slate-300">新密碼</label>
+                    <input type="password" id="password-forgot" required value={password} onChange={(e) => setPassword(e.target.value)}
+                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" placeholder="請輸入新密碼" />
+                  </div>
+                  <div className="pt-4">
+                    <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-100 dark:focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300">
+                      確認重設
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setIsForgotPasswordView(false)} className="w-full text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 mt-2 text-sm">
+                    記起密碼了？返回登入
+                  </button>
+                </form>
+              ) : (
+                // --- 登入/註冊表單 ---
+                <form className="space-y-6" onSubmit={handleAction}>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="student-id-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">學號</label>
+                    <input type="text" id="student-id-input" required value={studentId} onChange={(e) => setStudentId(e.target.value)}
+                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
+                  </div>
+                  {!isLoginView && (
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="student-name-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">姓名</label>
+                      <input type="text" id="student-name-input" required value={studentName} onChange={(e) => setStudentName(e.target.value)}
+                        className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="password-input" className="text-sm font-medium text-slate-700 dark:text-slate-300">密碼</label>
+                    <input type="password" id="password-input" required value={password} onChange={(e) => setPassword(e.target.value)}
+                      className="w-64 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 transition duration-150" />
+                  </div>
+                  <div className="pt-4">
+                    <button type="submit" className="w-full bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-100 dark:focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300">
+                      {isLoginView ? '登入' : '註冊'}
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setIsLoginView(!isLoginView)} className="w-full text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 mt-2 text-sm">
+                    {isLoginView ? '還沒有帳號？前往註冊' : '已有帳號？返回登入'}
+                  </button>
+                  
+                  {isLoginView && (
+                    <button type="button" onClick={() => setIsForgotPasswordView(true)} className="w-full text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-2 text-sm underline">
+                      忘記密碼？
+                    </button>
+                  )}
+                </form>
+              )}
+
+            </div>
+          </div>
+        );
+      };
       
       const renderIntroContent = () => { return(
-          <div className="relative bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center">
-            <h2 className="text-3xl font-bold text-slate-100 mb-4">歡迎來到 CodeMate！</h2>
-            <p className="text-xl text-slate-300 mb-8">{welcomeMessage}</p>
-            <p className="text-lg text-slate-200 max-w-2xl mx-auto">
+          <div className="relative bg-white dark:bg-slate-900 border-2 border-teal-500/50 p-12 rounded-2xl shadow-lg shadow-teal-500/20 w-full max-w-2xl text-center transition-colors">
+            {/* 標題顏色修改 */}
+            <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100 mb-4">歡迎來到 CodeMate！</h2>
+            
+            {/* 歡迎訊息顏色修改 */}
+            <p className="text-xl text-slate-600 dark:text-slate-300 mb-8">{welcomeMessage}</p>
+            
+            {/* 介紹文字顏色修改 */}
+            <p className="text-lg text-slate-700 dark:text-slate-200 max-w-2xl mx-auto">
               CodeMate 是一個專為您量身打造的 Python 學習平台。我們提供：
             </p>
-            <p className="text-left pl-20 text-slate-300 space-y-2 mt-4">
-              <span><strong>豐富的教材</strong>：包含簡報、影片、隨堂測驗及運算思維學習單。</span><br />
-              <span><strong>適性化聊天機器人</strong>：隨時提問，獲得即時且個人化的引導式回饋。</span><br />
-              <span><strong>程式與筆記編輯區</strong>：讓您能隨時做筆記、立即練習所學。</span><br />
-            </p>
+            
+            {/* 清單文字與重點標記顏色修改 */}
+            <div className="text-left pl-20 text-slate-600 dark:text-slate-300 space-y-2 mt-4">
+              <p><strong className="text-teal-700 dark:text-teal-400">豐富的教材</strong>：包含簡報、影片、隨堂測驗及運算思維學習單。</p>
+              <p><strong className="text-teal-700 dark:text-teal-400">適性化聊天機器人</strong>：隨時提問，獲得即時且個人化的引導式回饋。</p>
+              <p><strong className="text-teal-700 dark:text-teal-400">程式與筆記編輯區</strong>：讓您能隨時做筆記、立即練習所學。</p>
+            </div>
+            
             <div className="flex justify-end pt-8">
-              <button onClick={() => setPage('learning')} className="bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
+              <button onClick={() => setPage('learning')} className="bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-teal-500 transition-all duration-300 ease-in-out">
                 開始學習
               </button>
             </div>
@@ -2473,42 +2427,54 @@
       
       const renderLearningContent = () => {        
         return (
-          <div className="split-container p-2 gap-2 bg-slate-950">
+          <div className="split-container p-2 gap-2 bg-slate-200 dark:bg-slate-950 transition-colors duration-300">
             {/* 左側區塊 */}
             <div id="left-pane" className="flex flex-col gap-2">
                 {/* 教材區 */}
-                <div id="material-pane" className="flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-lg">
+                <div id="material-pane" className="flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-800 rounded-lg">
                     {currentModule?.type === 'video' && <iframe src={currentModule.videoUrl} className="w-full h-full rounded-lg" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Embedded Video"></iframe>}
                     {currentModule?.type === 'ppt' && <iframe src={currentModule.pptUrl} className="w-full h-full rounded-lg" frameBorder="0" allowFullScreen title="Embedded PPT"></iframe>}
                     {currentModule?.type === 'quiz' && (
                       <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                        <h2 className="text-2xl font-bold text-teal-300 mb-4">{currentModule.title}</h2>
-                        <p className="text-slate-300 mb-8">{currentModule.content}</p>
+                        {/* 🔥 修改 1: 標題顏色從 text-teal-300 改為深青色 text-teal-700 */}
+                        <h2 className="text-2xl font-bold text-teal-700 dark:text-teal-300 mb-4">{currentModule.title}</h2>
+                        
+                        <p className="text-slate-600 dark:text-slate-300 mb-8">{currentModule.content}</p>
+                        
+                        {/* 🔥 修改 2: 按鈕樣式優化 */}
                         <button 
-                          onClick={() => handleOpenQuiz(currentModule)} // <-- [修改]
-                          className="font-semibold py-3 px-6 rounded-lg transition-all bg-slate-900 text-teal-400 border border-teal-500 shadow-[0_0_10px_0px_theme(colors.teal.500/50)] hover:text-teal-300 hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
+                          onClick={() => handleOpenQuiz(currentModule)}
+                          className="font-semibold py-3 px-6 rounded-lg transition-all 
+                                    bg-white dark:bg-slate-900 
+                                    text-teal-700 dark:text-teal-400 
+                                    /* 🔥 修改：將 border 改為 border-2，並加深淺色模式邊框顏色 */
+                                    border-2 border-teal-600 dark:border-teal-500 
+                                    shadow-sm dark:shadow-[0_0_10px_0px_theme(colors.teal.500/50)] 
+                                    hover:bg-teal-50 dark:hover:bg-slate-800 
+                                    hover:text-teal-800 dark:hover:text-teal-300 
+                                    hover:border-teal-700 dark:hover:shadow-[0_0_12px_1px_theme(colors.teal.400/75)]"
                         >
-                          {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"} {/* <-- [修改] 判斷方式 */}
+                          {quizProgress[currentModule.id] ? "再次測驗" : "開始測驗"}
                         </button>
-                        {/* [修改] 顯示更詳細的進度 (可選) */}
+                        
+                        {/* 狀態文字顏色調整 */}
                         {quizProgress[currentModule.id] && (
-                          <p className="text-slate-400 text-sm mt-4">
+                          <p className="text-slate-500 dark:text-slate-400 text-sm mt-4">
                             狀態：已作答
-                            (上次作答: {new Date(quizProgress[currentModule.id].lastAttempted).toLocaleString()})
                           </p>
                         )}
                       </div>
                     )}
                     {currentModule?.type === 'worksheet' && (
-                      <div className="w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden">
+                      <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
                         {/* 學習單標題列 */}
-                        <div className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
-                          <h2 className="text-xl font-bold text-teal-400">{currentModule.title}</h2>
+                        <div className="bg-white dark:bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
+                          <h2 className="text-xl font-bold text-teal-700 dark:text-teal-400">{currentModule.title}</h2>
 	                          <div className="flex gap-2">
 								<button 
 	                              onClick={() => handleAiGrading()}
                                   disabled={isGrading}
-	                              className="text-xs bg-purple-500/10 text-purple-300 px-3 py-1 rounded-full hover:bg-purple-500/20 disabled:opacity-50 flex items-center gap-1"
+	                              className="text-xs bg-purple-100 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full hover:bg-purple-200 dark:hover:bg-purple-500/20 border border-purple-200 dark:border-transparent flex items-center gap-1 transition-colors disabled:opacity-50"
 	                            >
 	                              {isGrading ? (
                                       <>
@@ -2522,16 +2488,16 @@
 	                            </button>
 	                            <button 
 	                              onClick={() => handleDownloadWorksheet()}
-	                              className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
+	                              className="text-xs bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full hover:bg-blue-200 dark:hover:bg-teal-500/20 border border-blue-200 dark:border-transparent transition-colors"
 	                            >
 	                              Download
 	                            </button>
 	                          </div>
                         </div>
                         {/* 學習單內容區 */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 text-slate-100">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 text-slate-800 dark:text-slate-100">
                           
-                          <h1 className="text-2xl font-bold text-teal-400 border-b border-slate-400 pb-2 mb-4">
+                          <h1 className="text-2xl font-bold text-teal-700 dark:text-teal-400 border-b border-slate-400 pb-2 mb-4">
                              {topicMap[currentModule.id]?.split('：')[0] || "運算思維學習單"}
                           </h1>
                           <p className="text-sm">
@@ -2543,8 +2509,8 @@
                             <div className="space-y-6 mt-4">
                                 {/* 第一題 */}
                                 <div className="space-y-2">
-                                    <h3 className="font-bold text-teal-200">1. 運算思維過程</h3>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                    <h3 className="font-bold text-teal-600 dark:text-teal-200">1. 運算思維過程</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                                         在運算思維的四個過程中，__________是指忽略不重要的細節，只進行重點摘要的技能。
                                     </p>
                                     <input 
@@ -2555,14 +2521,14 @@
                                             ...prev,
                                             [currentModule.id]: { ...(prev[currentModule.id] || {}), 'q1': e.target.value }
                                         }))}
-                                        className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                     />
                                 </div>
 
                                 {/* 第二題 */}
                                 <div className="space-y-2">
-                                    <h3 className="font-bold text-teal-200">2. 語言特性</h3>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                    <h3 className="font-bold text-teal-600 dark:text-teal-200">2. 語言特性</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                                         Python 屬於__________語言（Interpreted language），不需像 C 語言那樣經過事先編譯成機器碼即可執行。
                                     </p>
                                     <input 
@@ -2573,14 +2539,14 @@
                                             ...prev,
                                             [currentModule.id]: { ...(prev[currentModule.id] || {}), 'q2': e.target.value }
                                         }))}
-                                        className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                     />
                                 </div>
 
                                 {/* 第三題 */}
                                 <div className="space-y-2">
-                                    <h3 className="font-bold text-teal-200">3. 型態系統</h3>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                    <h3 className="font-bold text-teal-600 dark:text-teal-200">3. 型態系統</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                                         Python 屬於__________語言，其變數本身不帶有型態資訊，僅用來參考資料，優點是語法簡潔且具備高度彈性。
                                     </p>
                                     <input 
@@ -2591,14 +2557,14 @@
                                             ...prev,
                                             [currentModule.id]: { ...(prev[currentModule.id] || {}), 'q3': e.target.value }
                                         }))}
-                                        className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                     />
                                 </div>
 
                                 {/* 第四題 */}
                                 <div className="space-y-2">
-                                    <h3 className="font-bold text-teal-200">4. 程式註解</h3>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                    <h3 className="font-bold text-teal-600 dark:text-teal-200">4. 程式註解</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                                         在撰寫 Python 程式時，若要加入「單行註解」，應使用的符號是__________。
                                     </p>
                                     <input 
@@ -2609,14 +2575,14 @@
                                             ...prev,
                                             [currentModule.id]: { ...(prev[currentModule.id] || {}), 'q4': e.target.value }
                                         }))}
-                                        className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                     />
                                 </div>
 
                                 {/* 第五題 */}
                                 <div className="space-y-2">
-                                    <h3 className="font-bold text-teal-200">5. 解決問題</h3>
-                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                    <h3 className="font-bold text-teal-600 dark:text-teal-200">5. 解決問題</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                                         運算思維的最後一個步驟是__________，其定義為設計出解決問題的具體步驟。
                                     </p>
                                     <input 
@@ -2627,7 +2593,7 @@
                                             ...prev,
                                             [currentModule.id]: { ...(prev[currentModule.id] || {}), 'q5': e.target.value }
                                         }))}
-                                        className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm"
+                                        className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                     />
                                 </div>
                             </div>
@@ -2636,7 +2602,7 @@
                             <>
                               {/* 1. 拆解問題 */}
                               <div className="space-y-3">
-                                <h2 className="text-medium font-bold text-teal-200">1. 拆解問題</h2>
+                                <h2 className="text-medium font-bold text-teal-600 dark:text-teal-200">1. 拆解問題</h2>
                                 <p className="text-sm text-slate-400">將一個複雜的大問題，分解成數個易於管理的小問題。</p>
                                 
                                 <div className="ml-4 space-y-3">
@@ -2651,7 +2617,7 @@
                                           'q1-1': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2667,7 +2633,7 @@
                                           'q1-2': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2683,7 +2649,7 @@
                                           'q1-3': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2692,7 +2658,7 @@
 
                               {/* 2. 樣式辨識 (與下面所有區塊保持不變...) */}
                               <div className="space-y-3">
-                                <h2 className="text-medium font-bold text-teal-200">2. 樣式辨識</h2>
+                                <h2 className="text-medium font-bold text-teal-600 dark:text-teal-200">2. 樣式辨識</h2>
                                 <p className="text-sm text-slate-400">在小問題中，找出重複出現的模式、趨勢或相似性。</p>
                                 
                                 <div className="ml-4 space-y-3">
@@ -2706,7 +2672,7 @@
                                           'q2-1': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2721,7 +2687,7 @@
                                           'q2-2': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2736,7 +2702,7 @@
                                           'q2-3': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2745,7 +2711,7 @@
 
                               {/* 3. 抽象化 / 提取重點 */}
                               <div className="space-y-3">
-                                <h2 className="text-medium font-bold text-teal-200">3. 抽象化 / 提取重點</h2>
+                                <h2 className="text-medium font-bold text-teal-600 dark:text-teal-200">3. 抽象化 / 提取重點</h2>
                                 <p className="text-sm text-slate-400">專注於最重要的資訊，忽略不相關的細節。</p>
                                 
                                 <div className="ml-4 space-y-3">
@@ -2759,7 +2725,7 @@
                                           'q3-1': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2774,7 +2740,7 @@
                                           'q3-2': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2790,7 +2756,7 @@
                                           'q3-3': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2806,7 +2772,7 @@
                                           'q3-4': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2815,7 +2781,7 @@
 
                               {/* 4. 演算法 */}
                               <div className="space-y-3">
-                                <h2 className="text-medium font-bold text-teal-200">4. 演算法</h2>
+                                <h2 className="text-medium font-bold text-teal-600 dark:text-teal-200">4. 演算法</h2>
                                 <p className="text-sm text-slate-400">設計一個清晰、明確、按部就班的解決方案。</p>
                                 
                                 <div className="ml-4 space-y-3">
@@ -2830,7 +2796,7 @@
                                           'q4-1': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-40 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2845,7 +2811,7 @@
                                           'q4-2': e.target.value
                                         }
                                       }))}
-                                      className="w-full p-3 bg-slate-800 border border-slate-700 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm h-20 worksheet-answer" 
+                                      className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm transition-colors"
                                       placeholder="作答區："
                                     ></textarea>
                                   </div>
@@ -2857,13 +2823,13 @@
                         </div>
                       </div>
                     )}
-                    {!currentModule && <div className="w-full h-full rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
+                    {!currentModule && <div className="w-full h-full rounded-lg bg-white dark:bg-slate-900 border border-slate-800 flex items-center justify-center"><p>請選擇一個課程單元</p></div>}
                 </div>
                 {/* 聊天機器人區 */}
-                <div id="chat-pane" className="flex flex-col bg-slate-900 rounded-lg p-4 border border-slate-800">
-                    <div className="flex-1 overflow-y-auto bg-slate-950 rounded-lg p-3 shadow-sm mb-4">
+                <div id="chat-pane" className="flex flex-col bg-white dark:bg-slate-900 rounded-lg p-4 border border-slate-800">
+                    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 rounded-lg p-3 shadow-sm mb-4 border border-slate-200 dark:border-transparent transition-colors">
                         {chatMessages.map((msg) => (
-                        <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600/70 text-white ml-auto rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
+                        <div key={msg.id} className={`mb-3 p-3 rounded-lg max-w-[90%] text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-600 text-white ml-auto rounded-br-none' : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-transparent rounded-bl-none'}`}>
                             <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}></div>
                             <div className={`text-xs mt-1 text-right ${msg.sender === 'user' ? 'text-teal-200' : 'text-slate-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                         </div>
@@ -2883,11 +2849,11 @@
                               }
                           }}
                           placeholder={isAiResponding ? "AI 助教正在回覆..." : "輸入你的問題..."}
-                          className="flex-1 p-2 bg-slate-800 border border-slate-700 text-white rounded-lg resize-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:bg-slate-700"
+                          className="flex-1 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg resize-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-100 dark:disabled:bg-slate-700"
                           rows="1"
                           disabled={isAiResponding}
                         />
-                        <button onClick={handleSendChat} disabled={!chatInput.trim() || isAiResponding} className="bg-teal-600 text-white px-4 rounded-lg hover:bg-teal-700 disabled:bg-slate-600 flex items-center justify-center">
+                        <button onClick={handleSendChat} disabled={!chatInput.trim() || isAiResponding} className="bg-indigo-600 text-white px-4 rounded-lg hover:bg-indigo-700 dark:bg-teal-600 dark:hover:bg-teal-700 disabled:bg-slate-300 dark:disabled:bg-slate-600 flex items-center justify-center transition-colors">
                           <Icon name="send" className="w-5 h-5"/>
                         </button>
                     </div>
@@ -2895,8 +2861,8 @@
             </div>
             
             {/* 右側區塊 */}
-            <div id="right-pane" className="h-full flex flex-col bg-slate-900 rounded-lg border border-slate-800">
-                  <div className="flex border-b border-slate-800 p-2 items-center gap-1 overflow-x-auto">
+            <div id="right-pane" className="h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg border border-slate-800">
+                  <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-2 items-center gap-1 overflow-x-auto">
                       {/* Tabs 標籤列 */}
                       {tabs.map(tab => (
                           <div 
@@ -2912,7 +2878,7 @@
                             // 🔼 [修改結束] -----------------------------
 
                             // 🔽 [還原] 2. 移除剛才加的 group relative 和內部的 Tooltip div，保持乾淨
-                            className={`flex-shrink-0 flex items-center py-1 px-3 rounded-full cursor-pointer text-xs border border-transparent ${activeTabId === tab.id ? 'bg-slate-800 border-slate-700 text-teal-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+                            className={`flex-shrink-0 flex items-center py-1 px-3 rounded-full cursor-pointer text-xs border transition-all ${activeTabId === tab.id ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 shadow-sm' : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                           >
                               {/* 這裡的 Tooltip div 請刪除，我們改用全域渲染 */}
                               
@@ -2925,10 +2891,10 @@
                                       onBlur={handleTabTitleSave}
                                       onKeyDown={handleTabTitleKeyDown}
                                       onClick={(e) => e.stopPropagation()} 
-                                      className="bg-slate-950 text-white text-xs px-1 py-0 outline-none border-b border-teal-500 w-24 rounded-none"
+                                      className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-xs px-1 py-0 outline-none border-b border-teal-600 dark:border-teal-500 w-24 rounded-none transition-colors"
                                   />
                               ) : (
-                                  <span onDoubleClick={(e) => handleTabDoubleClick(e, tab)} className="select-none">
+                                  <span onDoubleClick={(e) => handleTabDoubleClick(e, tab)} className="select-none text-slate-700 dark:text-slate-200">
                                       {tab.title}
                                   </span>
                               )}
@@ -2936,20 +2902,21 @@
                           </div>
                       ))}
                       <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => handleAddTab('code')} className="text-xs bg-teal-500/10 text-teal-300 px-3 py-1 rounded-full hover:bg-teal-500/20">+ Code</button>
-                        <button onClick={() => handleAddTab('note')} className="text-xs bg-amber-500/10 text-amber-300 px-3 py-1 rounded-full hover:bg-amber-500/20">+ Note</button>
+                        <button onClick={() => handleAddTab('code')} className="text-xs bg-teal-100 dark:bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-transparent px-3 py-1 rounded-full hover:bg-teal-500/20">+ Code</button>
+                        <button onClick={() => handleAddTab('note')} className="text-xs bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-transparent px-3 py-1 rounded-full hover:bg-amber-500/20">+ Note</button>
                       </div>
                   </div>
                   {/* Tab 內容區 */}
                   <div className="flex-1 p-2 overflow-hidden flex flex-col"> {/* 改為 flex flex-col */}
                       {activeTab?.type === 'code' && (
-                          <div className="h-full flex flex-col">
+                          <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 transition-colors duration-300">
                               {/* 1. CodeMirror 編輯器 (保持高度為一半) */}
-                              <div className="h-3/5 overflow-hidden">
+                              <div className="h-3/5 overflow-hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#282a36]">
                                   <CodeMirrorEditor
                                       activeTab={activeTab}
                                       handleTabContentChange={handleTabContentChange}
                                       handleCodeKeyDown={handleCodeKeyDown}
+                                      isDarkMode={isDarkMode} // 🔥 傳入這個 prop
                                   />
                               </div>
 
@@ -2964,7 +2931,7 @@
                                         <button
                                           onClick={() => handleRunCode(activeTab.id)}
                                           disabled={!activeTab || isExecuting}
-                                          className="text-xs bg-green-500/10 text-green-300 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-slate-500"
+                                          className="text-xs bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-300 px-3 py-1 rounded-full hover:bg-green-200 dark:hover:bg-teal-500/20 border border-green-200 dark:border-transparent disabled:opacity-50 transition-colors"
                                         >
                                           {isExecuting ? 'Running' : 'Run'}
                                         </button>
@@ -2978,14 +2945,14 @@
                                     <button
                                       onClick={handleStopCode}
                                       disabled={!isExecuting}
-                                      className="text-xs bg-red-700 text-red-400 px-3 py-1 rounded-full hover:bg-teal-500/20 disabled:bg-red-500/10"
+                                      className="text-xs bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 px-3 py-1 rounded-full hover:bg-red-200 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 disabled:opacity-50 transition-colors"
                                     >
                                       Break
                                     </button>
 
                                     <button
                                       onClick={() => handleDownloadTabContent(activeTab)}
-                                      className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
+                                      className="text-xs bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full hover:bg-blue-200 dark:hover:bg-teal-500/20 border border-blue-200 dark:border-transparent transition-colors"
                                     >
                                       Download Code
                                     </button>
@@ -2995,12 +2962,12 @@
                                   <div className="flex-1 text-sm space-y-2 overflow-y-auto p-1"> {/* ✅ overflow-y-auto 移到這裡 */}
                                       {(activeTab.output || activeTab.error) && (
                                           <div>
-                                              <strong className={activeTab.error ? "text-red-400" : "text-slate-300"}>
+                                              <strong className={activeTab.error ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}>
                                                   {activeTab.error ? '錯誤:' : '輸出:'}
                                               </strong>
                                               <div 
                                                   ref={terminalOutputRef} 
-                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap ${activeTab.error ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-200'}`}
+                                                  className={`rounded !mt-1 !p-4 !font-mono !text-sm whitespace-pre-wrap transition-colors ${activeTab.error ? 'bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-300 border border-red-200 dark:border-transparent' : 'bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-transparent'}`}
                                                   contentEditable={isExecuting && isWaitingForInput && !activeTab.error} 
                                                   suppressContentEditableWarning={true}
                                                   onCompositionStart={() => isComposing.current = true}
@@ -3030,7 +2997,7 @@
                           </div>
                       )}
                       {activeTab?.type === 'note' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
+                          <div className="h-full flex flex-col border border-slate-700 bg-white dark:bg-slate-900 rounded-md">
                             <textarea
                                 value={activeTab.content}
                                 onChange={e => handleTabContentChange(activeTab.id, e.target.value)}
@@ -3040,7 +3007,7 @@
                             <div className="p-2 border-t border-slate-700 flex justify-start">
                                 <button 
                                     onClick={() => handleDownloadTabContent(activeTab)}
-                                    className="text-xs bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full hover:bg-teal-500/20"
+                                    className="text-xs bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full hover:bg-blue-200 dark:hover:bg-teal-500/20 border border-blue-200 dark:border-transparent transition-colors"
                                 >
                                     Download Note
                                 </button>
@@ -3048,20 +3015,21 @@
                           </div>
                       )}
 					  {activeTab?.type === 'feedback' && (
-                          <div className="h-full flex flex-col border border-slate-700 bg-slate-900 rounded-md">
-                            <div className="flex-1 p-4 overflow-y-auto prose prose-invert max-w-none text-sm">
-                                {/* 使用 dangerouslySetInnerHTML 來渲染 Markdown 轉成的 HTML */}
-                                <div dangerouslySetInnerHTML={{ __html: marked.parse(activeTab.content) }}></div>
-                            </div>
-                            <div className="p-2 border-t border-slate-700 flex justify-start gap-2">
-                                <button 
-                                    onClick={() => handleRemoveTab(activeTab.id)}
-                                    className="text-xs bg-slate-700 text-slate-300 px-3 py-1 rounded-full hover:bg-slate-600"
-                                >
-                                    關閉建議
-                                </button>
-                                <span className="text-xs text-slate-500 self-center">您可以對照左側學習單進行修改</span>
-                            </div>
+                          <div className="h-full flex flex-col border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-md transition-colors">
+                              {/* 移除 prose-invert，改用 prose dark:prose-invert 以自動切換 Markdown 文字顏色 */}
+                              <div className="flex-1 p-4 overflow-y-auto prose dark:prose-invert max-w-none text-sm text-slate-800 dark:text-slate-200">
+                                  <div dangerouslySetInnerHTML={{ __html: marked.parse(activeTab.content) }}></div>
+                              </div>
+                              <div className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-start gap-2 bg-slate-50 dark:bg-slate-900/50">
+                                  <button 
+                                      onClick={() => handleRemoveTab(activeTab.id)}
+                                      className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                                  >
+                                      關閉建議
+                                  </button>
+                                  {/* 修改輔助文字顏色：確保在淺色模式也有足夠對比度 */}
+                                  <span className="text-xs text-slate-500 dark:text-slate-400 self-center">您可以對照左側學習單進行修改</span>
+                              </div>
                           </div>
                       )}
                       {!activeTab && <div className="text-sm text-slate-500 p-4">請新增一個分頁開始。</div>}
@@ -3091,29 +3059,38 @@
         if (page !== 'learning') return null;
 
         return (
-            <div className={`flex-shrink-0 flex flex-col bg-slate-900 text-slate-300 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-1/5 p-4' : 'w-16 p-2'}`}>
+            <div className={`h-full flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 shadow-lg transition-all duration-300 ${isSidebarOpen ? 'w-64 p-4' : 'w-16 p-2'}`}>
                 {isSidebarOpen && (
                     <>
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-slate-100">課程列表</h2>
-                            <button onClick={() => setIsSidebarOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-800"
-								onMouseEnter={(e) => handleShowTooltip(e, '收起課程列表', 'top')} // 🔥 新增這行
-                                onMouseLeave={handleHideTooltip} // 🔥 新增這行
-								>
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">課程列表</h2>
+                            <button 
+                                onClick={() => setIsSidebarOpen(false)} 
+                                className="p-1 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                onMouseEnter={(e) => handleShowTooltip(e, '收起課程列表', 'top')}
+                                onMouseLeave={handleHideTooltip}
+                            >
                                 <Icon name="menu" className="w-6 h-6"/>
                             </button>
                         </div>
                         <div className="flex-1 overflow-y-auto -mr-2 pr-2">
                         {courses.map(course => (
                         <div key={course.id} className="mb-3">
-                            <div onClick={() => handleCourseSelect(course)} className={`p-3 rounded-lg cursor-pointer transition-all ${selectedCourse?.id === course.id ? 'bg-slate-800' : 'hover:bg-slate-800'}`}>
-                            <h3 className="font-semibold text-slate-200">{course.title}</h3>
+                            <div 
+                              onClick={() => handleCourseSelect(course)} 
+                              className={`p-3 rounded-lg cursor-pointer transition-all border-2 ${
+                                selectedCourse?.id === course.id 
+                                ? 'bg-teal-100 dark:bg-slate-800 border-teal-600 dark:border-teal-500 shadow-md' 
+                                : 'bg-transparent border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                            <h3 className="font-semibold text-slate-800 dark:text-slate-200">{course.title}</h3>
                             </div>
                             {selectedCourse?.id === course.id && (
                             <div className="mt-2 pl-2 space-y-1">
                                 {modules.map(module => module.submodules ? (
                                 <div key={module.id}>
-                                    <div onClick={() => toggleModuleExpansion(module.id)} className="flex justify-between items-center p-2 rounded-md cursor-pointer hover:bg-slate-800">
+                                    <div onClick={() => toggleModuleExpansion(module.id)} className="flex justify-between items-center p-2 rounded-md cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300">
                                         <span className="font-medium text-sm">{module.title}</span>
                                         <Icon name="chevron" className="w-5 h-5 text-slate-400" isExpanded={expandedModules[module.id]} />
                                     </div>
@@ -3124,7 +3101,11 @@
                                                 key={submodule.id} 
                                                 onClick={() => handleModuleSelect(submodule)} 
                                                 // [修改後] 方案一：淡色背景
-                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${currentModule?.id === submodule.id ? 'bg-teal-500/20 text-teal-300 font-semibold' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+                                                className={`flex justify-between items-center p-2 rounded-md cursor-pointer text-xs transition-all ${
+                                                    currentModule?.id === submodule.id 
+                                                    ? 'bg-teal-600 text-white dark:bg-teal-500/20 dark:text-teal-300 font-semibold shadow-sm' 
+                                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                                                }`}
                                               >
                                                 <span>{submodule.title}</span>
                                                 {submodule.type === 'quiz' && quizProgress[submodule.id] && (
@@ -3149,11 +3130,13 @@
                 )}
                 {!isSidebarOpen && (
                     <div className="flex flex-col items-center">
-                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg hover:bg-slate-800"
-							onMouseEnter={(e) => handleShowTooltip(e, '展開課程列表', 'top')} // 🔥 新增這行 (顯示在右邊)
-                            onMouseLeave={handleHideTooltip} // 🔥 新增這行
-							>
-                           <Icon name="menu" className="w-6 h-6"/>
+                        <button 
+                            onClick={() => setIsSidebarOpen(true)} 
+                            className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            onMouseEnter={(e) => handleShowTooltip(e, '展開課程列表', 'top')}
+                            onMouseLeave={handleHideTooltip}
+                        >
+                              <Icon name="menu" className="w-6 h-6"/>
                         </button>
                     </div>
                 )}
@@ -3171,13 +3154,22 @@
       };
 
       return (
-        <div className="h-full flex flex-col">
-            <header className="h-14 bg-slate-900 border-b border-slate-800 shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0">
+        <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 transition-colors duration-300">
+            <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md z-10 flex items-center justify-between px-6 flex-shrink-0 transition-colors duration-300">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold text-teal-400">CodeMate</h1>
+                    <h1 className="text-2xl font-bold text-teal-600 dark:text-teal-400">CodeMate</h1>
+                    
+                    {/* 🔥 [新增] 學習區的深淺色切換按鈕 */}
+                    <button
+                        onClick={() => setIsDarkMode(!isDarkMode)}
+                        className="p-1.5 ml-2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        title="切換深淺色模式"
+                    >
+                        <Icon name={isDarkMode ? "sun" : "moon"} className="w-5 h-5" />
+                    </button>
                 </div>
                 {isLoggedIn && (
-                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-500/30">
+                    <button onClick={handleLogout} className="text-sm font-bold border border-red-500 bg-red-50 dark:bg-red-500/20 text-red-500 px-3 py-1 rounded-full hover:bg-red-100 dark:hover:bg-red-500/30 transition-colors">
                         LogOut
                     </button>
                 )}
@@ -3190,7 +3182,7 @@
             </div>
           
           {showMessage && (
-            <div className="fixed top-5 right-5 bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
+            <div className="fixed top-5 right-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white px-4 py-2 rounded-lg shadow-xl z-50 animate-pulse transition-colors duration-300">
               {message}
             </div>
           )}
