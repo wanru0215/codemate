@@ -1931,7 +1931,9 @@
               return;
           }
 
-          setIsGrading(true); 
+          setIsGrading(true);
+		  // 按下批改時，先手動觸發一次存檔，確保與資料庫同步
+		  saveWorksheetAnswersToDb(worksheetAnswers);
 		  const chapterName = CHAPTER_MAP[currentModule.id] || `第 ${currentModule.id} 章`;
 
           // 1. 組合 Context Data (題目 + 學生答案)
