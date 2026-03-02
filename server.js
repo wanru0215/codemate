@@ -318,11 +318,15 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
           history: {
             moduleId: moduleId,
             timestamp: new Date(),
-            answersSnapshot: currentAnswers, // 儲存按下按鈕當下的答案版本
+            answersSnapshot: currentAnswers,
             aiFeedback: aiFeedback
           }
         },
-        $set: { lastUpdated: new Date() } // 同時更新最後時間
+        // 🔥 關鍵：在存入歷史紀錄的同時，也要更新主答案欄位，確保資料同步
+        $set: { 
+          answers: currentAnswers, 
+          lastUpdated: new Date() 
+        } 
       },
       { upsert: true, new: true }
     );
