@@ -93,6 +93,24 @@ const UserWorkspace = mongoose.model('UserWorkspace', userWorkspaceSchema, 'User
 // --- API 路由 (Routes) ---
 
 // 🔥 [新增] AI 批改 API 🔥
+// 定義學習進度順序，用於限制 AI 建議範圍
+const ID_NAME_MAP = {
+    "1015": "第一章：Python 的基本觀念",
+    "1026": "第二章：變數與數學運算",
+    "1037": "第三章：Python 的基本資料型態",
+    "1047": "第四章：基本輸入與輸出",
+    "1056": "第五章：流程控制 (if)",
+    "10612": "第六章：串列 (List)",
+    "10711": "第七章：迴圈 (Loop)",
+    "1098": "第九章：字典 (Dict)",
+    "2015": "第十章：集合 (Set)",
+    "20211": "第十一章：函數 (Function)",
+    "20310": "第十二章：類別 (Class)",
+    "20413": "第十四章：檔案讀寫",
+    "2056": "第十五章：異常處理 (Try-Except)"
+};
+const CHAPTER_SEQUENCE = ["1015", "1026", "1037", "1047", "1056", "10612", "10711", "1098", "2015", "20211", "20310", "20413", "2056"];
+
 app.post('/api/progress/worksheet/grade', async (req, res) => {
   try {
     const { studentId, moduleId, chapterTitle, currentAnswers, contextData } = req.body;
@@ -101,242 +119,106 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
       return res.status(400).json({ message: '缺少必要資料' });
     }
 
-    // A. 準備 Prompt 呼叫 Gemini
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        console.error("缺少 GEMINI_API_KEY");
-        return res.status(500).json({ message: '伺服器配置錯誤: 缺少 API Key' });
-    }
+    const modIdStr = String(moduleId);
+    const currentIndex = CHAPTER_SEQUENCE.indexOf(modIdStr);
+    
+    const allowedChaptersNames = CHAPTER_SEQUENCE
+        .slice(0, currentIndex + 1)
+        .map(id => ID_NAME_MAP[id] || id);
 
-    const modelName = "gemini-2.0-flash";
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-    const titleInfo = chapterTitle ? `${chapterTitle} (ID: ${moduleId})` : `章節 ID ${moduleId}`;
+    // --- 1. 整合您原本的詳細題庫資訊 ---
     let correctAnswerInfo = "";
-    const modIdStr = String(moduleId); // 轉成字串方便比對
+    if (modIdStr === "1015") {
+        correctAnswerInfo = `【標準解答】：1.抽象化 2.直譯式 3.動態型別 4.# 5.演算法`;
+    } else if (modIdStr === "1026") {
+        correctAnswerInfo = `【題目背景】：薪資管理員。180*156=28080元。限制：僅限千元、百元、十元面額。禁止建議 500/50/5/1 元。重點：檢查 // 與 % 運算。`;
+    } else if (modIdStr === "1037") {
+        correctAnswerInfo = `【規則】：一杯50元，總額 > 200 為大額訂單。重點：input() 轉型 int()、if 判斷、輸出總金額。`;
+    } else if (modIdStr === "1047") {
+        correctAnswerInfo = `【排版限制】：用 "|" 分隔。名稱佔15字元靠左({:<15})，價格佔10字元靠右並小數兩位({:>10.2f})。`;
+    } else if (modIdStr === "1056") {
+        correctAnswerInfo = `【等級標準】：90:A, 80:B, 70:C, 60:D, F。例外：>100或<0顯示「分數輸入錯誤」。重點：if-elif-else 結構。`;
+    } else if (modIdStr === "10612") {
+        correctAnswerInfo = `【任務】：初始5人、append()新增、pop()或remove()刪除最後、max()最高分、sort(reverse=True)排序。`;
+    } else if (modIdStr === "10711") {
+        correctAnswerInfo = `【規則】：random 產生 1-100、限猜5次、提示大小、猜中 break、失敗顯示挑戰失敗。`;
+    } else if (modIdStr === "1098") {
+        correctAnswerInfo = `【功能】：建立3人字典、Key(姓名)取Value(電話)、修改與新增 Key-Value。`;
+    } else if (modIdStr === "2015") {
+        correctAnswerInfo = `【解答】：報名{Amy,Bob,Cathy,Dave}, 簽到{Amy,Bob,Eve}。有效出席(交集&):{Amy,Bob}, 缺席(差集-):{Cathy,Dave}。`;
+    } else if (modIdStr === "20211") {
+        correctAnswerInfo = `【邏輯】：紅茶/綠茶30, 奶茶50。珍珠+10, 椰果+5。必須 return 總金額。重點：def 與 return。`;
+    } else if (modIdStr === "20310") {
+        correctAnswerInfo = `【邏輯】：Class Pet, __init__ 預設 hunger=50, play() +20, feed() -10。實作 Pikachu 最終值應為 60。`;
+    } else if (modIdStr === "20413") {
+        correctAnswerInfo = `【流程】：寫入 scores.txt (80,60,45,90,100)、讀取計算平均(75.0)、寫入 report.txt。重點：with open, 'r'/'w'模式。`;
+    } else if (modIdStr === "2056") {
+        correctAnswerInfo = `【要求】：捕捉 ValueError (非數字) 與 ZeroDivisionError (除以0)。重點：try-except 結構。`;
+    }
 
-    if (modIdStr === "1015") { // Ch1 基本觀念
-        correctAnswerInfo = `
-        【標準解答】：
-        1. 抽象 (或 抽象化 / Abstraction)
-        2. 直譯 (或 直譯式 / Interpreted)
-        3. 動態 (或 動態型別 / Dynamic)
-        4. # (或 井號)
-        5. 演算法 (Algorithm)
-        `;
-    } 
-    else if (modIdStr === "1026") { // Ch2 薪資管理員
-        correctAnswerInfo = `
-        【題目背景】：薪資管理員。計算時薪 180元 * 156小時 = 28080元。
-        【關鍵限制】：題目規定「只有千元、百元、十元」三種面額。
-        【禁止事項】：嚴禁建議學生使用 2000, 500, 50, 5, 1 等其他面額。
-        【標準解法】：
-        - 總薪資 28080
-        - 1000元: 28張
-        - 100元: 0張
-        - 10元: 8枚
-        請檢查學生是否正確使用 // (整除) 和 % (餘數) 運算。
-        `;
+    // --- 2. 整合評分標準樣版 ---
+    let gradingRubric = "";
+    if (modIdStr === "1015") {
+      gradingRubric = `【評分標準：填空題每題 20 分】請嚴格對照標準解答批改學生 q1 ~ q5 的回答。`;
+    } else {
+      gradingRubric = `
+      【評分標準：五大任務各佔 20 分】
+      1. 任務一：問題拆解 (Decomposition) - 對應 q1-1, q1-2, q1-3。須列出至少 4 個核心步驟。
+      2. 任務二：樣式辨識 (Pattern Recognition) - 對應 q2-1, q2-2, q2-3。須識別重複任務或相似經驗。
+      3. 任務三：抽象化 (Abstraction) - 對應 q3-1, q3-2, q3-3, q3-4。須正確設計輸入/輸出/變數。
+      4. 任務四：邏輯規劃 (Algorithm Design) - 對應 q4-1。步驟須符合「${correctAnswerInfo}」中的邏輯。
+      5. 任務五：例外處理 (Robustness) - 對應 q4-2。須考慮無效數據處理，否則最高僅給 10 分。`;
     }
-    else if (modIdStr === "1037") { // Ch3 珍珠奶茶
-        correctAnswerInfo = `
-        【題目背景】：珍珠奶茶點餐系統。一杯 50 元。
-        【規則】：總金額 > 200 元視為「大額訂單」。
-        【檢查重點】：
-        1. 輸入：是否使用了 input() 且有轉型為 int()。
-        2. 判斷：是否正確使用 if 判斷總金額是否大於 200。
-        3. 輸出：需顯示總金額及是否為大額訂單。
-        `;
-    }
-    else if (modIdStr === "1047") { // Ch4 超市標籤
-        correctAnswerInfo = `
-        【題目背景】：超市自動標籤列印系統。
-        【輸入需求】：商品名稱(str)、特價編號(int)、原始價格(float)。
-        【排版限制】：
-        - 欄位間用 "|" 分隔。
-        - 名稱：佔 15 字元，靠左對齊 (f-string: {name:<15})。
-        - 價格：佔 10 字元，靠右對齊，小數點後兩位 (f-string: {price:>10.2f})。
-        請特別檢查學生的 f-string 格式化語法是否精確符合上述排版要求。
-        `;
-    }
-    else if (modIdStr === "1056") { // Ch5 分數等級
-        correctAnswerInfo = `
-        【題目背景】：分數等級判斷。
-        【等級標準】：
-        - 90以上: A
-        - 80-89: B
-        - 70-79: C
-        - 60-69: D
-        - 60以下: F
-        【例外處理】：若分數 > 100 或 < 0，必須顯示「分數輸入錯誤」。
-        請檢查學生是否使用了 if-elif-else 結構，以及是否優先處理了無效分數的檢查。
-        `;
-    }
-    else if (modIdStr === "10612") { // Ch6 成績紀錄 (List)
-        correctAnswerInfo = `
-        【題目背景】：成績紀錄系統 (List 操作)。
-        【必要任務】：
-        1. 建立初始 5 人成績串列。
-        2. append(): 新增轉學生。
-        3. pop() 或 remove(): 刪除最後一名。
-        4. max(): 找出最高分。
-        5. sort(reverse=True): 由高到低排序。
-        請檢查學生是否使用了對應的 List 方法 (Method)。
-        `;
-    }
-    else if (modIdStr === "10711") { // Ch7 猜數字 (Loop)
-        correctAnswerInfo = `
-        【題目背景】：猜數字遊戲 (1-100)。
-        【規則】：
-        - 隨機產生數字 (import random)。
-        - 最多猜 5 次 (使用迴圈限制次數)。
-        - 每次需提示「太大」或「太小」。
-        - 5次沒中顯示「挑戰失敗」。
-        - 猜中提早結束 (break)。
-        `;
-    }
-    else if (modIdStr === "1098") { // Ch9 通訊錄 (Dict)
-        correctAnswerInfo = `
-        【題目背景】：手機通訊錄 (Dictionary)。
-        【功能需求】：
-        - 建立字典：包含 3 位朋友資料。
-        - 查詢：透過 Key (姓名) 取得 Value (電話)。
-        - 修改：更新現有 Key 的 Value。
-        - 新增：加入新的 Key-Value 對。
-        `;
-    }
-    else if (modIdStr === "2015") { 
-        correctAnswerInfo = `
-        【題目背景】：校園活動簽到核對系統 (固定測資版)。
-        【指定測資】：
-        - 報名名單 (signup)：['Amy', 'Bob', 'Cathy', 'Dave', 'Amy']
-        - 簽到名單 (checkin)：['Bob', 'Amy', 'Eve', 'Bob']
-        
-        【標準解法與答案】：
-        1. 去重後：
-           - 報名集合：{'Amy', 'Bob', 'Cathy', 'Dave'}
-           - 簽到集合：{'Amy', 'Bob', 'Eve'}
-        2. 有效出席 (交集 &)：{'Amy', 'Bob'}
-        3. 缺席名單 (差集 -)：{'Cathy', 'Dave'} (注意：Eve 是沒報名但跑來的，題目只問缺席者，所以不需列出 Eve)
-        
-        【檢查重點】：
-        - 學生程式碼是否使用了題目指定的這兩組 List？
-        - 輸出的結果是否與上述標準答案一致？
-        `;
-    }
-    else if (modIdStr === "20211") { 
-        correctAnswerInfo = `
-        【題目背景】：手搖飲自動計價函數 (Function 設計)。
-        【需求】：
-        1. 定義函數：def calculate_price(drink, topping):
-        2. 邏輯判斷：
-           - 飲料：紅茶/綠茶=30, 奶茶=50。
-           - 加料：珍珠=+10, 椰果=+5, 無=+0。
-        3. 回傳：必須使用 return 回傳計算後的總金額 (int)。
-        【檢查重點】：是否使用了 def, return, 以及正確的 if-elif-else 條件判斷。
-        `;
-    }
-    else if (modIdStr === "20310") { 
-        correctAnswerInfo = `
-        【題目背景】：電子寵物 (Class & Object)。
-        【標準解法】：
-        1. 定義類別 Class Pet。
-        2. 建構子 __init__：設定 self.name 和 self.hunger (預設 50)。
-        3. 方法 feed()：self.hunger -= 10。
-        4. 方法 play()：self.hunger += 20。
-        5. 實作流程：建立 Pet('Pikachu') -> play() (hunger變70) -> feed() (hunger變60)。
-        【最終狀態】：Pikachu 的 hunger 應為 60。
-        `;
-    }
-    // 🔥 [新增/修改] Ch14 檔案：成績結算
-    else if (modIdStr === "20413") { 
-        correctAnswerInfo = `
-        【題目背景】：成績結算小幫手 (File I/O 完整流程)。
-        【指定測資】：分數列表 [80, 60, 45, 90, 100]。
-        【標準解法】：
-        1. 步驟一 (建立資料)：使用 'w' 模式開啟 'scores.txt'，利用迴圈將 list 中的分數寫入檔案 (記得加換行符號 \\n)。
-        2. 步驟二 (讀取計算)：使用 'r' 模式讀取 'scores.txt'，將字串轉為 int 並計算平均 (總分375 / 5 = 75.0)。
-        3. 步驟三 (輸出報告)：使用 'w' 模式開啟 'report.txt'，寫入 "平均分數：75.0"。
-        【檢查重點】：
-        - 是否有先寫入檔案 (避免 FileNotFoundError)？
-        - 是否正確使用 with open() 語法？
-        - 讀寫模式 ('r', 'w') 是否正確切換？
-        `;
-    }
-    // 🔥 [新增/修改] Ch15 防錯：安全除法器
-    else if (modIdStr === "2056") { 
-        correctAnswerInfo = `
-        【題目背景】：安全除法器 (Try-Except)。
-        【需求】：
-        - 輸入：兩個變數 a, b。
-        - 運算：print(a / b)。
-        - 異常處理 1：捕捉 ValueError (防止輸入非數字)。
-        - 異常處理 2：捕捉 ZeroDivisionError (防止除以 0)。
-        【檢查重點】：學生是否正確使用了 try-except 結構，並分別處理了上述兩種特定的錯誤類型。
-        `;
-    }
+
+    // --- 3. 組合最終系統 Prompt ---
     const systemPrompt = `
-      你是一位 Python 程式設計老師。學生剛剛完成了${titleInfo}的運算思維學習單。
-      ${correctAnswerInfo}
-      以下是題目與學生目前的作答內容。
-      請依照題目針對學生的作答給予「批改建議」：
-      1. 指出哪些回答是正確的，給予肯定。
-      2. 指出哪些回答有誤或不精確，並引導學生思考正確方向（不要直接給答案）。
-      3. 語氣要鼓勵且友善。
-      4. 請用繁體中文回答。
-      5. 請使用 Markdown 格式 (例如列點、粗體)。
+      你是一位 Python 教學助教，現在要批改學生的「${chapterTitle}」學習單。
       
-      學生的作答資料如下：
+      【知識權限規範】
+      1. 學生目前的學習進度僅至：${ID_NAME_MAP[modIdStr]}。
+      2. 你在建議時，只能引用以下已學過的單元概念：${allowedChaptersNames.join('、')}。
+      3. **🚨 絕對禁止在回覆中出現任何四位數的 ID 編號 (如 1015, 1026, 1037 等)**。這些是系統內部編號，學生看不懂。
+      4. 如果要引用章節，請直接使用名稱，例如「請參考第二章關於數學運算的內容」。
+
+      ${gradingRubric}
+      ${correctAnswerInfo}
+
+      【回饋格式要求】
+      1. 第一行必須是： 「### 總分：[計算後的分數]/100」
+      2. 指出正確處給予肯定。
+      3. 針對錯誤，請用「引導式提問」讓學生自己發現問題，不要直接給答案。
+      4. 繁體中文回答，Markdown 格式。
+
+      【學生作答內容】
       ${contextData}
     `;
 
-    const payload = {
-      contents: [{ role: 'user', parts: [{ text: systemPrompt }] }]
-    };
-
-    // 呼叫 Gemini
-    const geminiResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // 呼叫 Gemini (保持原本 fetch 邏輯)
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: systemPrompt }] }] })
     });
-    
-    if (!geminiResponse.ok) {
-        const errData = await geminiResponse.text();
-        console.error("Gemini API Error:", errData);
-        throw new Error("Gemini API 呼叫失敗");
-    }
 
-    const data = await geminiResponse.json();
-    const aiFeedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 目前無法提供建議。";
+    const data = await response.json();
+    const aiFeedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "無法生成建議。";
 
-    // B. 存檔：將「當下版本」與「AI 建議」存入 history
+    // 🔥 儲存到 DB (同時更新 answers 以修復之前提到的遺失問題)
     await WorksheetAnswer.findOneAndUpdate(
       { studentId: studentId },
       { 
-        $push: { 
-          history: {
-            moduleId: moduleId,
-            timestamp: new Date(),
-            answersSnapshot: currentAnswers,
-            aiFeedback: aiFeedback
-          }
-        },
-        // 🔥 關鍵：在存入歷史紀錄的同時，也要更新主答案欄位，確保資料同步
-        $set: { 
-          answers: currentAnswers, 
-          lastUpdated: new Date() 
-        } 
+        $push: { history: { moduleId, timestamp: new Date(), answersSnapshot: currentAnswers, aiFeedback } },
+        $set: { answers: currentAnswers, lastUpdated: new Date() } 
       },
       { upsert: true, new: true }
     );
 
-    // C. 回傳 AI 建議給前端顯示
     res.status(200).json({ feedback: aiFeedback });
 
   } catch (error) {
-    console.error('AI 批改 API 錯誤:', error);
-    res.status(500).json({ message: '伺服器錯誤，無法取得 AI 建議' });
+    console.error("批改出錯:", error);
+    res.status(500).json({ message: '伺服器出錯' });
   }
 });
 
