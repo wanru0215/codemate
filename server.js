@@ -205,22 +205,26 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
     const aiFeedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "無法生成建議。";
 
     // 🔥 儲存到 DB (同時更新 answers 以修復之前提到的遺失問題)
+    // 🔥 修改後的儲存邏輯
     await WorksheetAnswer.findOneAndUpdate(
       { studentId: studentId },
       { 
-        $push: { history: { moduleId, timestamp: new Date(), answersSnapshot: currentAnswers, aiFeedback } },
-        $set: { answers: currentAnswers, lastUpdated: new Date() } 
+        $push: { 
+          history: { 
+            moduleId, 
+            timestamp: new Date(), 
+            answersSnapshot: currentAnswers, 
+            aiFeedback 
+          } 
+        },
+        // ✅ 使用動態 Key：只更新 answers 下對應的單元 ID，不影響其他章節
+        $set: { 
+          [`answers.${moduleId}`]: currentAnswers, 
+          lastUpdated: new Date() 
+        } 
       },
       { upsert: true, new: true }
     );
-
-    res.status(200).json({ feedback: aiFeedback });
-
-  } catch (error) {
-    console.error("批改出錯:", error);
-    res.status(500).json({ message: '伺服器出錯' });
-  }
-});
 
 // 儲存學習單答案 API
 app.post('/api/progress/worksheet/save', async (req, res) => {
