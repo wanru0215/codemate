@@ -217,7 +217,7 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
             aiFeedback 
           } 
         },
-        // ✅ 使用動態 Key：只更新 answers 下對應的單元 ID，不影響其他章節
+        // ✅ 修正重點：使用 [`answers.${moduleId}`] 只更新當前單元 ID 的內容
         $set: { 
           [`answers.${moduleId}`]: currentAnswers, 
           lastUpdated: new Date() 
@@ -225,6 +225,14 @@ app.post('/api/progress/worksheet/grade', async (req, res) => {
       },
       { upsert: true, new: true }
     );
+
+    res.status(200).json({ feedback: aiFeedback });
+
+  } catch (error) {
+    console.error("批改出錯:", error);
+    res.status(500).json({ message: '伺服器出錯' });
+  }
+});
 
 // 儲存學習單答案 API
 app.post('/api/progress/worksheet/save', async (req, res) => {
