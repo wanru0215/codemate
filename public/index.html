@@ -172,6 +172,7 @@
             edit: <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />,
 			sun: <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 21v-2.25m-6.364-.386l1.591-1.591M3 12h2.25m.386-6.364l1.591 1.591M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />,
             moon: <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />,
+			cloud: <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />,
         };
         const rotation = name === 'chevron' ? (isExpanded ? 'rotate-180' : 'rotate-0') : '';
         return (
@@ -2468,17 +2469,25 @@
                       </div>
                     )}
                     {currentModule?.type === 'worksheet' && (
-                      <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
-                        {/* 學習單標題列 */}
-                        <div className="bg-white dark:bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
-                          <h2 className="text-xl font-bold text-teal-700 dark:text-teal-400">{currentModule.title}</h2>
-	                          <div className="flex gap-2">
-								<button 
-	                              onClick={() => handleAiGrading()}
-                                  disabled={isGrading}
-	                              className="text-xs bg-purple-100 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full hover:bg-purple-200 dark:hover:bg-purple-500/20 border border-purple-200 dark:border-transparent flex items-center gap-1 transition-colors disabled:opacity-50"
-	                            >
-	                              {isGrading ? (
+						  <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
+						    {/* 學習單標題列 */}
+						    <div className="bg-white dark:bg-slate-900 border-b border-slate-700 px-6 py-3 flex justify-between items-center flex-shrink-0">
+						      
+						      {/* 🔥 新增包裹容器 */}
+						      <div className="flex items-center gap-3">
+						          <h2 className="text-xl font-bold text-teal-700 dark:text-teal-400">{currentModule.title}</h2>
+						          
+						          {/* 🔥 新增雲端儲存標籤 */}
+						          <span className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 font-medium bg-slate-50 dark:bg-slate-800/50 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+						              <Icon name="cloud" className="w-3 h-3 text-teal-500/60" />
+						              內容已自動儲存至雲端
+						          </span>
+						      </div>
+						
+						      <div className="flex gap-2">
+						        <button onClick={() => handleAiGrading()} disabled={isGrading}
+						          className="text-xs bg-purple-100 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full hover:bg-purple-200 dark:hover:bg-purple-500/20 border border-purple-200 dark:border-transparent flex items-center gap-1 transition-colors disabled:opacity-50">
+						          {isGrading ? (
                                       <>
                                         <span className="animate-spin">↻</span> 分析中...
                                       </>
@@ -2487,7 +2496,7 @@
                                         AI批改建議
                                       </>
                                   )}
-	                            </button>
+						        </button>
 	                            <button 
 	                              onClick={() => handleDownloadWorksheet()}
 	                              className="text-xs bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full hover:bg-blue-200 dark:hover:bg-teal-500/20 border border-blue-200 dark:border-transparent transition-colors"
