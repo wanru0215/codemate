@@ -449,11 +449,20 @@
           }
       };
       // 🔼 [新增結束] -------------------------
+	  const deadline = new Date('2026-03-17T00:00:00+08:00').getTime();
+	  const isAfterDeadline = Date.now() >= deadline;
       // Mock Data
       const mockCourses = [
           { id: 1, title: "程式設計 (一)" },
           { id: 2, title: "程式設計 (二)" }
       ];
+		const displayedCourses = mockCourses.filter(course => {
+		    // 如果課程 ID 為 1 且目前時間已過截止日，則不顯示 (回傳 false)
+		    if (course.id === 1 && isAfterDeadline) {
+		        return false;
+		    }
+		    return true;
+		});
       const mockModules = {
           1: [
               { 
@@ -1430,6 +1439,11 @@
                     }));
                     setIsExecuting(false); // 標記為執行結束
                 });
+			  // 在你的 useEffect 內，接在 disconnect 監聽器後面
+				newSocket.on('force_refresh', () => {
+				    console.log("[Socket.IO] 收到下架指令，網頁即將自動刷新...");
+				    window.location.reload();
+				});
 
 
               // 清理函數：當組件卸載或依賴項變化時斷開連線
@@ -3085,7 +3099,7 @@
                             </button>
                         </div>
                         <div className="flex-1 overflow-y-auto -mr-2 pr-2">
-                        {courses.map(course => (
+                        {displayedCourses.map(course => (
                         <div key={course.id} className="mb-3">
                             <div 
                               onClick={() => handleCourseSelect(course)} 
