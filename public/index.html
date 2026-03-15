@@ -457,8 +457,8 @@
           { id: 2, title: "程式設計 (二)" }
       ];
 		const displayedCourses = mockCourses.filter(course => {
-		    // 如果課程 ID 為 1 且目前時間已過截止日，則不顯示 (回傳 false)
-		    if (course.id === 1 && isAfterDeadline) {
+		    // 邏輯拆解：如果「(ID為1 或 ID為2)」且「目前已過截止日」，則不顯示
+		    if ((course.id === 1 || course.id === 2) && isAfterDeadline) {
 		        return false;
 		    }
 		    return true;
