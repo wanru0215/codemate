@@ -1300,54 +1300,46 @@
         }
     }, [studentId]);
 
-    // 替換原本 index (1).html 第 715 行起的 useEffect
+    // 區塊 A：初始載入
 	useEffect(() => {
-		if (page === 'learning' && isLoggedIn && studentId) {
-			// 1. [保持不變] 初始載入 MongoDB 的答案
-			const loadWorksheetAnswers = async () => {
-				try {
-					const response = await fetch(`/api/progress/worksheet/load/${studentId}`);
-					if (response.ok) {
-						const answers = await response.json();
-						setWorksheetAnswers(answers);
-					}
-				} catch (error) {
-					console.error('載入學習單失敗:', error);
-				}
-			};
-			loadWorksheetAnswers();
+	    if (page === 'learning' && isLoggedIn && studentId) {
+	        const loadWorksheetAnswers = async () => {
+	            try {
+	                const response = await fetch(`/api/progress/worksheet/load/${studentId}`);
+	                if (response.ok) {
+	                    const answers = await response.json();
+	                    setWorksheetAnswers(answers);
+	                    console.log("學習單資料初始載入成功");
+	                }
+	            } catch (error) {
+	                console.error('載入學習單失敗:', error);
+	            }
+	        };
+	        loadWorksheetAnswers();
+	    }
+	    // 注意：這裡的依賴項絕對不能放 worksheetAnswers
+	}, [page, isLoggedIn, studentId]);
+	// 區塊 B：自動儲存 (Debounce)
+	useEffect(() => {
+	    // 如果還沒登入或資料還沒載入，不要執行儲存
+	    if (!isLoggedIn || !studentId || Object.keys(worksheetAnswers).length === 0) return;
 	
-			// 2. [新增] Debounce 自動儲存邏輯 (2 秒)
-			// 每當 worksheetAnswers 變動時，重設計時器
-			if (worksheetSaveTimeoutRef.current) {
-				clearTimeout(worksheetSaveTimeoutRef.current);
-			}
+	    // 清除舊計時器
+	    if (worksheetSaveTimeoutRef.current) {
+	        clearTimeout(worksheetSaveTimeoutRef.current);
+	    }
 	
-			worksheetSaveTimeoutRef.current = setTimeout(() => {
-				console.log("偵測到停止輸入，正在自動儲存學習單...");
-				saveWorksheetAnswersToDb(worksheetAnswers);
-			}, 2000); // 停止輸入後 2 秒觸發存檔
+	    // 設定新計時器
+	    worksheetSaveTimeoutRef.current = setTimeout(() => {
+	        console.log("偵測到停止打字，自動儲存中...");
+	        saveWorksheetAnswersToDb(worksheetAnswers);
+	    }, 2000); 
 	
-			// 3. [保持不變] 視窗關閉前的強制儲存
-			const handleBeforeUnload = () => {
-				if (studentId && worksheetAnswers && Object.keys(worksheetAnswers).length > 0) {
-					const payload = JSON.stringify({ studentId, worksheetAnswers });
-					const xhr = new XMLHttpRequest();
-					xhr.open('POST', '/api/progress/worksheet/save', false);
-					xhr.setRequestHeader('Content-Type', 'application/json');
-					xhr.send(payload);
-				}
-			};
-	
-			window.addEventListener('beforeunload', handleBeforeUnload);
-	
-			return () => {
-				if (worksheetSaveTimeoutRef.current) clearTimeout(worksheetSaveTimeoutRef.current);
-				window.removeEventListener('beforeunload', handleBeforeUnload);
-			};
-		}
-	}, [page, isLoggedIn, studentId, worksheetAnswers, saveWorksheetAnswersToDb]); // 這裡務必加入 worksheetAnswers 作為依賴項
-
+	    return () => {
+	        if (worksheetSaveTimeoutRef.current) clearTimeout(worksheetSaveTimeoutRef.current);
+	    };
+	}, [worksheetAnswers]); // 只監控答案的變動
+		
       // --- 🔽 [新增] WebSocket 連線與事件監聽 ---
       useEffect(() => {
           // 只在登入後且在學習頁面時建立連線
