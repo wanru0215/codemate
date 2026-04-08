@@ -317,6 +317,11 @@ app.get('/api/workspace/load/:studentId', async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+app.get('/api/admin/force-refresh-all', (req, res) => {
+    console.log("【管理員指令】強制所有在線頁面重新整理...");
+    io.emit('force_refresh'); // 向所有連接中的瀏覽器廣播刷新指令
+    res.send("已成功發送全體刷新指令");
+});
 
 // 註冊 API
 app.post('/api/register', async (req, res) => {
