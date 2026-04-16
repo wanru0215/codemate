@@ -635,7 +635,7 @@ builtins.open = safe_open
     });
   });
   // ------------------------------------------------
-  server.js 測試代碼
+  // server.js 測試代碼
   const testTargetTime = new Date('3026-04-10T00:00:00+08:00').getTime();
   const currentTime = Date.now();
   const delay = testTargetTime - currentTime;
