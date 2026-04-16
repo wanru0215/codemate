@@ -1431,9 +1431,17 @@
                     setIsExecuting(false); // 標記為執行結束
                 });
 			  // 在你的 useEffect 內，接在 disconnect 監聽器後面
-				newSocket.on('force_refresh', () => {
-				    console.log("[Socket.IO] 收到下架指令，網頁即將自動刷新...");
-				    window.location.reload();
+				// newSocket.on('force_refresh', () => {
+				//     console.log("[Socket.IO] 收到下架指令，網頁即將自動刷新...");
+				//     window.location.reload();
+				// });
+			  let hasRefreshed = false;
+			  newSocket.on('force_refresh', () => {
+					if (!hasRefreshed) {
+						hasRefreshed = true;
+						console.log("只刷新一次");
+						window.location.reload();
+					}
 				});
 
 
