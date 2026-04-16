@@ -450,20 +450,20 @@
           }
       };
       // 🔼 [新增結束] -------------------------
-	  const deadline = new Date('2026-04-10T00:00:00+08:00').getTime();
-	  const isAfterDeadline = Date.now() >= deadline;
+	  // const deadline = new Date('2026-04-10T00:00:00+08:00').getTime();
+	  // const isAfterDeadline = Date.now() >= deadline;
       // Mock Data
       const mockCourses = [
           { id: 1, title: "程式設計 (一)" },
           { id: 2, title: "程式設計 (二)" }
       ];
-		const displayedCourses = mockCourses.filter(course => {
-		    // 邏輯拆解：如果「(ID為1 或 ID為2)」且「目前已過截止日」，則不顯示
-		    if ((course.id === 1 || course.id === 2) && isAfterDeadline) {
-		        return false;
-		    }
-		    return true;
-		});
+		// const displayedCourses = mockCourses.filter(course => {
+		//     // 邏輯拆解：如果「(ID為1 或 ID為2)」且「目前已過截止日」，則不顯示
+		//     if ((course.id === 1 || course.id === 2) && isAfterDeadline) {
+		//         return false;
+		//     }
+		//     return true;
+		// });
       const mockModules = {
           1: [
               { 
