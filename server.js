@@ -636,17 +636,17 @@ builtins.open = safe_open
   });
   // ------------------------------------------------
   // server.js 測試代碼
-  const testTargetTime = new Date('2026-04-10T00:00:00+08:00').getTime();
-  const currentTime = Date.now();
-  const delay = testTargetTime - currentTime;
+  // const testTargetTime = new Date('2026-04-10T00:00:00+08:00').getTime();
+  // const currentTime = Date.now();
+  // const delay = testTargetTime - currentTime;
   
-  if (delay > 0) {
-      console.log(`測試啟動：將在 ${delay / 1000} 秒後觸發刷新...`);
-      setTimeout(() => {
-          console.log("到達測試時間，執行自動刷新廣播！");
-          io.emit('force_refresh'); 
-      }, delay);
-  }
+  // if (delay > 0) {
+  //     console.log(`測試啟動：將在 ${delay / 1000} 秒後觸發刷新...`);
+  //     setTimeout(() => {
+  //         console.log("到達測試時間，執行自動刷新廣播！");
+  //         io.emit('force_refresh'); 
+  //     }, delay);
+  // }
 
   socket.on('terminal_input', (data) => {
     if (pythonProcess && pythonProcess.stdin) {
